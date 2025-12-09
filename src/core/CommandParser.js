@@ -467,6 +467,30 @@ export function registerStandardCommands(parser, game) {
     }
   });
 
+  parser.register('local', {
+    description: 'View details of current star system',
+    usage: 'local',
+    aliases: ['system', 'here'],
+    category: 'navigation',
+    handler: async (args, ctx) => {
+      const location = game.entities.getComponent(game.playerEntityId, 'PlayerLocation');
+
+      if (!location) {
+        return { message: 'Location unknown.', type: 'error' };
+      }
+
+      // Reuse view command logic for current system
+      const universe = game.engine.getSystem('universe');
+      const star = universe.getStar(location.systemId);
+
+      if (!star) {
+        return { message: 'System data unavailable.', type: 'error' };
+      }
+
+      return await game.view(star.Identity.name, true, ctx);
+    }
+  });
+
   // Interface switching
   parser.register('switch', {
     description: 'Switch between interface views',
