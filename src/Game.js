@@ -5,7 +5,7 @@
  */
 
 import { Engine } from './core/Engine.js';
-import { EntityManager } from './core/ECS.js';
+import { EntityManager, Components } from './core/ECS.js';
 import { EventBus } from './core/EventBus.js';
 import { CommandParser, registerStandardCommands } from './core/CommandParser.js';
 import { UniverseSystem } from './systems/UniverseSystem.js';
@@ -32,6 +32,7 @@ export class Game {
 
     // Game state
     this.player = null;
+    this.playerEntityId = null;
     this.initialized = false;
     this.savePath = options.savePath || './saves';
   }
@@ -90,6 +91,22 @@ export class Game {
         capacity: 100
       }
     };
+
+    // Create player as ECS entity
+    this.playerEntityId = this.entities.create('player_1');
+    this.entities.addComponent(this.playerEntityId, 'Identity',
+      Components.Identity(this.player.name, 'player', 'The player character')
+    );
+    this.entities.addComponent(this.playerEntityId, 'Character',
+      Components.Character(this.player.role, {}, [], '')
+    );
+    this.entities.addComponent(this.playerEntityId, 'Stats',
+      Components.Stats(100, 100, 100)
+    );
+    this.entities.addComponent(this.playerEntityId, 'Inventory',
+      Components.Inventory([], this.player.inventory.credits, 100)
+    );
+    // Position will be set when player spawns at a location
 
     this.initialized = true;
     this.events.emit('game:initialized', { seed: this.options.seed });
@@ -406,7 +423,8 @@ Commands: time pause | time resume | time step | time advance <n>
       seed: this.options.seed,
       engine: this.engine.getState(),
       entities: this.entities.serialize(),
-      player: this.player
+      player: this.player,
+      playerEntityId: this.playerEntityId
     };
 
     // Ensure save directory exists
@@ -443,6 +461,7 @@ Commands: time pause | time resume | time step | time advance <n>
       }
 
       this.player = data.player;
+      this.playerEntityId = data.playerEntityId || 'player_1';
 
       return { message: `Game loaded from ${filename}.json`, type: 'success' };
     } catch (error) {

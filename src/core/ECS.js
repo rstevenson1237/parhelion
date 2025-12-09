@@ -64,7 +64,14 @@ export const Components = {
   // Meta
   Tags: (...tags) => ({ tags: new Set(tags) }),
   Visible: (to = 'all', range = Infinity) => ({ to, range }),
-  Temporal: (created = Date.now(), updated = Date.now()) => ({ created, updated })
+  Temporal: (created = Date.now(), updated = Date.now()) => ({ created, updated }),
+
+  // Player specific
+  PlayerLocation: (systemId, bodyId = null, stationId = null) => ({
+    systemId,    // Current star system
+    bodyId,      // Planet/moon if landed
+    stationId    // Station if docked
+  })
 };
 
 /**
