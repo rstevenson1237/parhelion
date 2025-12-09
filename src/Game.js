@@ -405,6 +405,7 @@ Commands: time pause | time resume | time step | time advance <n>
       timestamp: Date.now(),
       seed: this.options.seed,
       engine: this.engine.getState(),
+      entities: this.entities.serialize(),
       player: this.player
     };
 
@@ -435,6 +436,12 @@ Commands: time pause | time resume | time step | time advance <n>
       // Restore state
       this.options.seed = data.seed;
       this.engine.loadState(data.engine);
+
+      // Restore entities
+      if (data.entities) {
+        this.entities.deserialize(data.entities);
+      }
+
       this.player = data.player;
 
       return { message: `Game loaded from ${filename}.json`, type: 'success' };
