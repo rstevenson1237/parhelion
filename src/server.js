@@ -139,11 +139,12 @@ wss.on('connection', (ws) => {
         // Handle view command for stars
         if (inputLower.startsWith('view ')) {
           const target = input.substring(5).trim();
-          const result = await game.executeCommand(input);
-          
+          const cmdResult = await game.executeCommand(input);
+          const result = cmdResult.result || {};
+
           ws.send(JSON.stringify({
             type: 'output',
-            content: result.output || result.message || formatStarView(game, target),
+            content: result.output || result.render || result.message || formatStarView(game, target),
             state: getGameState(game),
             highlight: target
           }));
@@ -151,11 +152,12 @@ wss.on('connection', (ws) => {
         }
         
         // Execute game command
-        const result = await game.executeCommand(input);
-        
+        const cmdResult = await game.executeCommand(input);
+        const result = cmdResult.result || {};
+
         ws.send(JSON.stringify({
           type: 'output',
-          content: result.output || result.message || 'Command executed.',
+          content: result.output || result.render || result.message || 'Command executed.',
           state: getGameState(game)
         }));
         
