@@ -329,11 +329,11 @@ After starting a game:
       const pos = starPositions.get(star.id);
       const color = STAR_COLORS[star.spectralClass] || '#ffffff';
       const baseRadius = STAR_SIZES[star.spectralClass] || 3;
-      
+
       const isHighlighted = highlightedStar?.id === star.id;
       const isHovered = hoveredStar?.id === star.id;
       const radius = baseRadius * (isHighlighted || isHovered ? 1.5 : 1);
-      
+
       // Outer glow
       const glowRadius = radius * 4;
       const gradient = ctx.createRadialGradient(
@@ -343,18 +343,18 @@ After starting a game:
       gradient.addColorStop(0, color + (isHighlighted ? 'aa' : '66'));
       gradient.addColorStop(0.5, color + '22');
       gradient.addColorStop(1, 'transparent');
-      
+
       ctx.fillStyle = gradient;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, glowRadius, 0, Math.PI * 2);
       ctx.fill();
-      
+
       // Star core
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
       ctx.fill();
-      
+
       // Highlight ring
       if (isHighlighted) {
         ctx.strokeStyle = color;
@@ -362,6 +362,29 @@ After starting a game:
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, radius + 8, 0, Math.PI * 2);
         ctx.stroke();
+      }
+    }
+
+    // Draw player location indicator
+    if (gameState.player?.locationId) {
+      const playerStar = stars.find(s => s.id === gameState.player.locationId);
+      if (playerStar) {
+        const pos = starPositions.get(playerStar.id);
+
+        // Draw player indicator
+        ctx.strokeStyle = '#00ff88';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 15, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw "YOU ARE HERE" marker
+        ctx.fillStyle = '#00ff88';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('▼', pos.x, pos.y - 20);
       }
     }
     

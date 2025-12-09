@@ -237,7 +237,7 @@ function formatStarView(game, targetName) {
 function getGameState(game) {
   const stars = [];
   const routes = [];
-  
+
   for (const [id, components] of game.entities.entities) {
     if (components.has('Star')) {
       const identity = game.entities.getComponent(id, 'Identity');
@@ -252,7 +252,7 @@ function getGameState(game) {
         spectralClass: star?.spectralClass || 'G'
       });
     }
-    
+
     if (components.has('Route')) {
       const route = game.entities.getComponent(id, 'Route');
       routes.push({
@@ -262,11 +262,23 @@ function getGameState(game) {
       });
     }
   }
-  
+
+  // Get player location
+  let playerLocation = null;
+  if (game.playerEntityId) {
+    const loc = game.entities.getComponent(game.playerEntityId, 'PlayerLocation');
+    if (loc) {
+      playerLocation = loc.systemId;
+    }
+  }
+
   return {
     stars,
     routes,
-    player: game.player,
+    player: {
+      ...game.player,
+      locationId: playerLocation
+    },
     time: game.engine?.time || { tick: 0, hours: 0, days: 0, years: 0 }
   };
 }
