@@ -33,10 +33,14 @@ const sessions = new Map();
 
 // Create HTTP server
 const server = createServer(async (req, res) => {
-  let filePath = req.url === '/' ? '/index.html' : req.url;
-  
-  // Prevent directory traversal
-  filePath = filePath.split('?')[0];
+  // Strip query string first
+  let filePath = req.url.split('?')[0];
+
+  // Default to index.html for root
+  if (filePath === '/') {
+    filePath = '/index.html';
+  }
+
   filePath = join(PUBLIC_DIR, filePath);
   
   const ext = extname(filePath);
@@ -51,6 +55,7 @@ const server = createServer(async (req, res) => {
       res.writeHead(404);
       res.end('Not Found');
     } else {
+      console.error(`[HTTP] Error serving ${req.url}:`, err);
       res.writeHead(500);
       res.end('Server Error');
     }
