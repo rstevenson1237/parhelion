@@ -10,7 +10,7 @@
     "dev": "node --watch src/index.js",
     "dev:web": "node --watch src/server.js",
     "server": "node src/network/server.js",
-    "test": "node --test tests/",
+    "test": "node --test tests/*.test.js",
     "lint": "eslint src/",
     "build": "npm run lint && npm test"
   },
