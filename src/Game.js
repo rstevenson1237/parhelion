@@ -391,21 +391,55 @@ export class Game {
   async getStatus(full, context) {
     const stats = this.entities.stats();
     const time = this.engine.formatGameTime();
-    
+
+    // Get player location details
+    const location = this.entities.getComponent(this.playerEntityId, 'PlayerLocation');
+    let locationStr = 'Unknown';
+    let systemInfo = '';
+
+    if (location) {
+      const universe = this.engine.getSystem('universe');
+      const star = universe.getStar(location.systemId);
+      if (star) {
+        locationStr = star.Identity.name;
+        systemInfo = `System: ${star.Star.spectralClass}-class star`;
+
+        // Count planets in system
+        const planets = Array.from(universe.getPlanetsInSystem(location.systemId));
+        systemInfo += `\nPlanets: ${planets.length}`;
+
+        // Get connections
+        const connections = universe.getConnectedSystems(location.systemId);
+        systemInfo += `\nJump Routes: ${connections.length}`;
+      }
+    }
+
     return {
       render: `
-Status Report
-═════════════
+═══════════════════════════════════════════════════════
+                    STATUS REPORT
+═══════════════════════════════════════════════════════
+
 Time: ${time}
 Tick: ${this.engine.state.tick}
 Engine: ${this.engine.config.paused ? 'PAUSED' : 'RUNNING'}
 
-Entities: ${stats.entityCount}
-Component Types: ${stats.componentTypes}
+LOCATION
+  Current: ${locationStr}
+  ${systemInfo}
 
-Player: ${this.player.name}
-Faction: ${this.player.faction}
-Credits: ${this.player.inventory.credits.toLocaleString()}
+COMMANDER
+  Name: ${this.player.name}
+  Faction: ${this.player.faction}
+  Role: ${this.player.role}
+  Credits: ₢${this.player.inventory.credits.toLocaleString()}
+
+GALAXY
+  Total Systems: ${stats.componentCounts.Star || 0}
+  Total Planets: ${stats.componentCounts.Planet || 0}
+  Jump Routes: ${stats.componentCounts.Route || 0}
+
+═══════════════════════════════════════════════════════
 `.trim()
     };
   }
