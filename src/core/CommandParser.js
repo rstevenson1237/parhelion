@@ -1,9 +1,48 @@
 /**
  * NEXUS PROTOCOL - Command Parser
- * 
+ *
  * Interprets player commands and translates them into game actions.
  * Supports aliases, shortcuts, context-aware completion, and command history.
  */
+
+/**
+ * Input validation utilities
+ */
+export const Validators = {
+  required: (value, name) => {
+    if (value === undefined || value === null || value === '') {
+      throw new Error(`${name} is required`);
+    }
+    return value;
+  },
+
+  string: (value, name, opts = {}) => {
+    if (typeof value !== 'string') {
+      throw new Error(`${name} must be a string`);
+    }
+    if (opts.minLength && value.length < opts.minLength) {
+      throw new Error(`${name} must be at least ${opts.minLength} characters`);
+    }
+    if (opts.maxLength && value.length > opts.maxLength) {
+      throw new Error(`${name} must be at most ${opts.maxLength} characters`);
+    }
+    return value;
+  },
+
+  integer: (value, name, opts = {}) => {
+    const num = parseInt(value);
+    if (isNaN(num)) {
+      throw new Error(`${name} must be a number`);
+    }
+    if (opts.min !== undefined && num < opts.min) {
+      throw new Error(`${name} must be at least ${opts.min}`);
+    }
+    if (opts.max !== undefined && num > opts.max) {
+      throw new Error(`${name} must be at most ${opts.max}`);
+    }
+    return num;
+  }
+};
 
 export class CommandParser {
   constructor() {
@@ -355,7 +394,13 @@ export function registerStandardCommands(parser, game) {
       { name: 'target', required: true, description: 'What to view' }
     ],
     handler: async (args, ctx) => {
-      return game.view(args.target, args.detail, ctx);
+      try {
+        const target = Validators.required(args.target, 'target');
+        Validators.string(target, 'target', { minLength: 1, maxLength: 100 });
+        return game.view(target, args.detail, ctx);
+      } catch (error) {
+        return { message: error.message, type: 'error' };
+      }
     },
     autocomplete: (tokens, ctx) => {
       return game.getViewTargets(tokens[0] || '', ctx);
@@ -371,7 +416,13 @@ export function registerStandardCommands(parser, game) {
       { name: 'destination', required: true }
     ],
     handler: async (args, ctx) => {
-      return game.goto(args.destination, ctx);
+      try {
+        const destination = Validators.required(args.destination, 'destination');
+        Validators.string(destination, 'destination', { minLength: 1, maxLength: 100 });
+        return game.goto(destination, ctx);
+      } catch (error) {
+        return { message: error.message, type: 'error' };
+      }
     }
   });
 
@@ -538,7 +589,13 @@ export function registerStandardCommands(parser, game) {
       { name: 'filename', required: false, default: 'autosave' }
     ],
     handler: async (args, ctx) => {
-      return game.save(args.filename, ctx);
+      try {
+        const filename = args.filename || 'autosave';
+        Validators.string(filename, 'filename', { minLength: 1, maxLength: 50 });
+        return game.save(filename, ctx);
+      } catch (error) {
+        return { message: error.message, type: 'error' };
+      }
     }
   });
 
@@ -550,7 +607,13 @@ export function registerStandardCommands(parser, game) {
       { name: 'filename', required: true }
     ],
     handler: async (args, ctx) => {
-      return game.load(args.filename, ctx);
+      try {
+        const filename = Validators.required(args.filename, 'filename');
+        Validators.string(filename, 'filename', { minLength: 1, maxLength: 50 });
+        return game.load(filename, ctx);
+      } catch (error) {
+        return { message: error.message, type: 'error' };
+      }
     }
   });
 
