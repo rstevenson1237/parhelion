@@ -9,6 +9,10 @@ import { EntityManager, Components } from './core/ECS.js';
 import { EventBus } from './core/EventBus.js';
 import { CommandParser, registerStandardCommands } from './core/CommandParser.js';
 import { UniverseSystem } from './systems/UniverseSystem.js';
+import { FactionSystem } from './systems/FactionSystem.js';
+import { EconomySystem } from './systems/EconomySystem.js';
+import { PoliticsSystem } from './systems/PoliticsSystem.js';
+import { EventSystem } from './systems/EventSystem.js';
 import { Random } from './utils/Random.js';
 import fs from 'fs';
 import path from 'path';
@@ -61,11 +65,34 @@ export class Game {
       update: () => {}
     }, 0);
 
-    // Initialize universe system
+    // Initialize event system (priority 5 - processes first)
+    const eventSystem = new EventSystem();
+    eventSystem.entities = this.entities;
+    eventSystem.setRNG(this.rng.next.bind(this.rng));
+    this.engine.registerSystem('events', eventSystem, 5);
+
+    // Initialize universe system (priority 10)
     const universe = new UniverseSystem();
     universe.entities = this.entities;
     universe.setRNG(this.rng.next.bind(this.rng));
     this.engine.registerSystem('universe', universe, 10);
+
+    // Initialize economy system (priority 20)
+    const economySystem = new EconomySystem();
+    economySystem.entities = this.entities;
+    economySystem.setRNG(this.rng.next.bind(this.rng));
+    this.engine.registerSystem('economy', economySystem, 20);
+
+    // Initialize politics system (priority 30)
+    const politicsSystem = new PoliticsSystem();
+    politicsSystem.entities = this.entities;
+    this.engine.registerSystem('politics', politicsSystem, 30);
+
+    // Initialize faction system (priority 40)
+    const factionSystem = new FactionSystem();
+    factionSystem.entities = this.entities;
+    factionSystem.setRNG(this.rng.next.bind(this.rng));
+    this.engine.registerSystem('factions', factionSystem, 40);
 
     // Initialize command parser
     this.commands = new CommandParser();
@@ -143,8 +170,20 @@ export class Game {
       ...options
     });
 
+    // Generate factions
+    const factionSystem = this.engine.getSystem('factions');
+    const stars = Array.from(universe.getStars());
+    factionSystem.generate(6, {
+      galaxySize: this.options.galaxySize,
+      stars: stars
+    });
+
+    // Initialize economy
+    const economySystem = this.engine.getSystem('economy');
+    economySystem.initializeMarkets();
+
     // Spawn player at first star system
-    const firstStar = Array.from(universe.getStars())[0];
+    const firstStar = stars[0];
     if (firstStar) {
       const [starId, components] = firstStar;
       this.entities.addComponent(this.playerEntityId, 'PlayerLocation',
@@ -159,6 +198,7 @@ export class Game {
 
     this.events.emit('game:started', {
       stars: this.entities.count('Star'),
+      factions: factionSystem.getFactions().length,
       seed: this.options.seed
     });
 

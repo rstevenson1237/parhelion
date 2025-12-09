@@ -641,6 +641,103 @@ export function registerStandardCommands(parser, game) {
     }
   });
 
+  // Intelligence commands
+  parser.register('factions', {
+    description: 'List all known factions',
+    usage: 'factions [--detailed]',
+    aliases: ['f'],
+    category: 'intelligence',
+    handler: async (args, ctx) => {
+      const factionSystem = game.engine.getSystem('factions');
+      return factionSystem.listFactions(args.detailed);
+    }
+  });
+
+  parser.register('faction', {
+    description: 'View detailed information about a faction',
+    usage: 'faction <name>',
+    category: 'intelligence',
+    args: [
+      { name: 'name', required: true, description: 'Faction name' }
+    ],
+    handler: async (args, ctx) => {
+      try {
+        const name = Validators.required(args.name, 'name');
+        const factionSystem = game.engine.getSystem('factions');
+        return factionSystem.getFactionDetails(name);
+      } catch (error) {
+        return { message: error.message, type: 'error' };
+      }
+    }
+  });
+
+  parser.register('relations', {
+    description: 'View diplomatic relations between factions',
+    usage: 'relations',
+    aliases: ['diplomacy'],
+    category: 'intelligence',
+    handler: async (args, ctx) => {
+      const factionSystem = game.engine.getSystem('factions');
+      const factions = factionSystem.getFactions();
+
+      let output = '═══════════════════════════════════════════════════════\n';
+      output += '               DIPLOMATIC RELATIONS\n';
+      output += '═══════════════════════════════════════════════════════\n\n';
+
+      for (const faction of factions) {
+        const diplomacy = game.entities.getComponent(faction.id, 'Diplomacy');
+        output += `${faction.name}:\n`;
+
+        for (const [otherId, value] of Object.entries(diplomacy?.relations || {})) {
+          const other = factionSystem.getFaction(otherId);
+          if (other) {
+            let status = 'Neutral';
+            if (value > 50) status = 'Allied';
+            else if (value > 25) status = 'Friendly';
+            else if (value > -10) status = 'Neutral';
+            else if (value > -25) status = 'Unfriendly';
+            else if (value > -50) status = 'Hostile';
+            else status = 'At War';
+
+            output += `  ${other.name}: ${status} (${value > 0 ? '+' : ''}${value})\n`;
+          }
+        }
+        output += '\n';
+      }
+
+      return { render: output };
+    }
+  });
+
+  parser.register('events', {
+    description: 'View recent game events',
+    usage: 'events [--limit <n>]',
+    category: 'intelligence',
+    handler: async (args, ctx) => {
+      const eventSystem = game.engine.getSystem('events');
+      const limit = parseInt(args.limit) || 10;
+      const history = eventSystem.getEventHistory(limit);
+
+      if (history.length === 0) {
+        return { message: 'No events recorded.', type: 'info' };
+      }
+
+      let output = '═══════════════════════════════════════════════════════\n';
+      output += '                  RECENT EVENTS\n';
+      output += '═══════════════════════════════════════════════════════\n\n';
+
+      for (const event of history.reverse()) {
+        output += `[Tick ${event.tick}] ${event.name}\n`;
+        if (event.data && Object.keys(event.data).length > 0) {
+          output += `  Details: ${JSON.stringify(event.data)}\n`;
+        }
+        output += '\n';
+      }
+
+      return { render: output };
+    }
+  });
+
   parser.register('quit', {
     description: 'Exit the game',
     usage: 'quit [--nosave]',

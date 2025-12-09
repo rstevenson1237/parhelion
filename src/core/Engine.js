@@ -25,6 +25,14 @@ export class Engine {
       lastTick: null
     };
 
+    // Enhanced time tracking
+    this.time = {
+      tick: 0,
+      hours: 0,
+      days: 0,
+      years: 0
+    };
+
     this.systems = new Map();
     this.systemOrder = [];
     this.events = new EventBus();
@@ -159,6 +167,12 @@ export class Engine {
     const tickStart = Date.now();
     this.state.tick++;
     this.state.gameTime += this.config.hoursPerTick || 1;
+
+    // Update time tracking
+    this.time.tick = this.state.tick;
+    this.time.hours = this.state.gameTime;
+    this.time.days = Math.floor(this.time.hours / 24);
+    this.time.years = Math.floor(this.time.days / 365);
 
     const tickData = {
       tick: this.state.tick,
