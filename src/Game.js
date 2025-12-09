@@ -143,12 +143,23 @@ export class Game {
       ...options
     });
 
+    // Spawn player at first star system
+    const firstStar = Array.from(universe.getStars())[0];
+    if (firstStar) {
+      const [starId, components] = firstStar;
+      this.entities.addComponent(this.playerEntityId, 'PlayerLocation',
+        Components.PlayerLocation(starId, null, null)
+      );
+      this.player.location = components.Identity.name;
+      this.player.locationId = starId;
+    }
+
     // Start the engine (paused)
     this.engine.start();
 
-    this.events.emit('game:started', { 
+    this.events.emit('game:started', {
       stars: this.entities.count('Star'),
-      seed: this.options.seed 
+      seed: this.options.seed
     });
 
     return this;
@@ -245,12 +256,33 @@ export class Game {
     // Find matching star
     for (const [id, components] of universe.getStars()) {
       if (components.Identity.name.toLowerCase().includes(lower)) {
-        // Update context (terminal will handle this)
+        // Check if route exists from current location
+        const currentLocation = this.entities.getComponent(this.playerEntityId, 'PlayerLocation');
+
+        if (currentLocation && currentLocation.systemId !== id) {
+          const connections = universe.getConnectedSystems(currentLocation.systemId);
+          const route = connections.find(c => c.id === id);
+
+          if (!route) {
+            return {
+              message: `No direct route from current system to ${components.Identity.name}. Check available connections.`,
+              type: 'warning'
+            };
+          }
+        }
+
+        // Update player location
+        this.entities.addComponent(this.playerEntityId, 'PlayerLocation',
+          Components.PlayerLocation(id, null, null)
+        );
+        this.player.location = components.Identity.name;
+        this.player.locationId = id;
+
         return {
           action: 'goto',
           systemId: id,
           systemName: components.Identity.name,
-          message: `Setting course for ${components.Identity.name}...`,
+          message: `Arrived at ${components.Identity.name}.`,
           type: 'success'
         };
       }

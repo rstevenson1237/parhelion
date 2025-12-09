@@ -385,6 +385,37 @@ export function registerStandardCommands(parser, game) {
     }
   });
 
+  parser.register('connections', {
+    description: 'Show available jump routes from current location',
+    usage: 'connections',
+    aliases: ['routes', 'jumps'],
+    category: 'navigation',
+    handler: async (args, ctx) => {
+      const location = game.entities.getComponent(game.playerEntityId, 'PlayerLocation');
+
+      if (!location) {
+        return { message: 'Location unknown.', type: 'error' };
+      }
+
+      const universe = game.engine.getSystem('universe');
+      const connections = universe.getConnectedSystems(location.systemId);
+      const currentStar = universe.getStar(location.systemId);
+
+      if (connections.length === 0) {
+        return { message: 'No jump routes available from this system.', type: 'warning' };
+      }
+
+      let output = `Jump routes from ${currentStar?.Identity?.name || 'current system'}:\n\n`;
+
+      for (const conn of connections) {
+        const star = universe.getStar(conn.id);
+        output += `  → ${star?.Identity?.name || 'Unknown'} (${conn.distance.toFixed(1)} LY)\n`;
+      }
+
+      return { render: output };
+    }
+  });
+
   // Interface switching
   parser.register('switch', {
     description: 'Switch between interface views',
