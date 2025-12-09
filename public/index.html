@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PARHELION</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <header id="header">
+      <div class="title">PARHELION</div>
+      <div class="status" id="status">DISCONNECTED</div>
+    </header>
+    
+    <main id="main">
+      <section id="terminal-section">
+        <div id="output"></div>
+        <div id="input-line">
+          <span class="prompt">&gt;</span>
+          <input type="text" id="input" autofocus autocomplete="off" spellcheck="false" placeholder="Type 'new' to start...">
+        </div>
+      </section>
+      
+      <aside id="map-section">
+        <div id="map-header">GALAXY MAP</div>
+        <canvas id="galaxy-map"></canvas>
+        <div id="map-info">No data</div>
+        <div id="star-tooltip" class="tooltip"></div>
+      </aside>
+    </main>
+    
+    <footer id="footer">
+      <span id="game-time">YEAR 0 DAY 0</span>
+      <span id="location">UNKNOWN SECTOR</span>
+      <span id="credits">₢ 10,000</span>
+    </footer>
+  </div>
+  
+  <script src="client.js"></script>
+</body>
+</html>

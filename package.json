@@ -1,0 +1,39 @@
+{
+  "name": "nexus-protocol",
+  "version": "0.1.0-alpha",
+  "description": "A grand strategy MUD set in a sprawling galactic civilization - Risk meets Foundation meets Traveller",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "web": "node src/server.js",
+    "dev": "node --watch src/index.js",
+    "dev:web": "node --watch src/server.js",
+    "server": "node src/network/server.js",
+    "test": "node --test tests/",
+    "lint": "eslint src/",
+    "build": "npm run lint && npm test"
+  },
+  "keywords": [
+    "mud",
+    "strategy",
+    "roguelike",
+    "sci-fi",
+    "multiplayer",
+    "ascii",
+    "terminal"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.16.0",
+    "uuid": "^9.0.0",
+    "seedrandom": "^3.0.5"
+  },
+  "devDependencies": {
+    "eslint": "^8.56.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

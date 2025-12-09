@@ -1,0 +1,549 @@
+/**
+ * NEXUS PROTOCOL - Command Parser
+ * 
+ * Interprets player commands and translates them into game actions.
+ * Supports aliases, shortcuts, context-aware completion, and command history.
+ */
+
+export class CommandParser {
+  constructor() {
+    this.commands = new Map();
+    this.aliases = new Map();
+    this.history = [];
+    this.historyIndex = -1;
+    this.context = {};
+    this.maxHistory = 100;
+  }
+
+  /**
+   * Register a command
+   * @param {string} name - Command name
+   * @param {object} definition - Command definition
+   */
+  register(name, definition) {
+    const cmd = {
+      name,
+      description: definition.description || '',
+      usage: definition.usage || name,
+      aliases: definition.aliases || [],
+      args: definition.args || [],
+      handler: definition.handler,
+      validate: definition.validate || (() => true),
+      autocomplete: definition.autocomplete || null,
+      category: definition.category || 'general',
+      requiresContext: definition.requiresContext || []
+    };
+
+    this.commands.set(name.toLowerCase(), cmd);
+
+    // Register aliases
+    for (const alias of cmd.aliases) {
+      this.aliases.set(alias.toLowerCase(), name.toLowerCase());
+    }
+
+    return this;
+  }
+
+  /**
+   * Parse and execute a command string
+   * @param {string} input - Raw command input
+   * @param {object} context - Current game context
+   * @returns {object} Result of command execution
+   */
+  async execute(input, context = {}) {
+    const trimmed = input.trim();
+    
+    if (!trimmed) {
+      return { success: false, error: 'Empty command' };
+    }
+
+    // Add to history
+    this.addToHistory(trimmed);
+
+    // Parse the command
+    const parsed = this.parse(trimmed);
+    
+    if (!parsed) {
+      return { 
+        success: false, 
+        error: `Unknown command: "${trimmed.split(' ')[0]}"`,
+        suggestions: this.getSuggestions(trimmed.split(' ')[0])
+      };
+    }
+
+    // Validate context requirements
+    for (const req of parsed.command.requiresContext) {
+      if (!context[req]) {
+        return {
+          success: false,
+          error: `This command requires ${req} context`
+        };
+      }
+    }
+
+    // Validate arguments
+    const validation = parsed.command.validate(parsed.args, context);
+    if (validation !== true) {
+      return {
+        success: false,
+        error: validation || 'Invalid arguments',
+        usage: parsed.command.usage
+      };
+    }
+
+    // Execute the command
+    try {
+      const result = await parsed.command.handler(parsed.args, context);
+      return {
+        success: true,
+        command: parsed.command.name,
+        result
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        command: parsed.command.name
+      };
+    }
+  }
+
+  /**
+   * Parse a command string into command and arguments
+   */
+  parse(input) {
+    const tokens = this.tokenize(input);
+    
+    if (tokens.length === 0) return null;
+
+    const cmdName = tokens[0].toLowerCase();
+    const resolvedName = this.aliases.get(cmdName) || cmdName;
+    const command = this.commands.get(resolvedName);
+
+    if (!command) return null;
+
+    // Parse arguments based on command definition
+    const args = this.parseArgs(tokens.slice(1), command.args);
+
+    return { command, args, raw: input };
+  }
+
+  /**
+   * Tokenize input, respecting quotes
+   */
+  tokenize(input) {
+    const tokens = [];
+    let current = '';
+    let inQuotes = false;
+    let quoteChar = '';
+
+    for (let i = 0; i < input.length; i++) {
+      const char = input[i];
+
+      if ((char === '"' || char === "'") && !inQuotes) {
+        inQuotes = true;
+        quoteChar = char;
+      } else if (char === quoteChar && inQuotes) {
+        inQuotes = false;
+        quoteChar = '';
+      } else if (char === ' ' && !inQuotes) {
+        if (current) {
+          tokens.push(current);
+          current = '';
+        }
+      } else {
+        current += char;
+      }
+    }
+
+    if (current) {
+      tokens.push(current);
+    }
+
+    return tokens;
+  }
+
+  /**
+   * Parse arguments according to command definition
+   */
+  parseArgs(tokens, argDefs) {
+    const args = {
+      _positional: [],
+      _raw: tokens
+    };
+
+    let tokenIndex = 0;
+    let argIndex = 0;
+
+    while (tokenIndex < tokens.length) {
+      const token = tokens[tokenIndex];
+
+      // Check for named argument (--name or -n)
+      if (token.startsWith('--')) {
+        const name = token.slice(2);
+        const value = tokens[tokenIndex + 1];
+        args[name] = value !== undefined && !value.startsWith('-') ? value : true;
+        if (value && !value.startsWith('-')) tokenIndex++;
+      } else if (token.startsWith('-') && token.length === 2) {
+        const flag = token.slice(1);
+        // Find full name from argDefs
+        const argDef = argDefs.find(a => a.short === flag);
+        const name = argDef ? argDef.name : flag;
+        const value = tokens[tokenIndex + 1];
+        args[name] = value !== undefined && !value.startsWith('-') ? value : true;
+        if (value && !value.startsWith('-')) tokenIndex++;
+      } else {
+        // Positional argument
+        if (argIndex < argDefs.length) {
+          args[argDefs[argIndex].name] = token;
+        }
+        args._positional.push(token);
+        argIndex++;
+      }
+
+      tokenIndex++;
+    }
+
+    // Apply defaults
+    for (const def of argDefs) {
+      if (args[def.name] === undefined && def.default !== undefined) {
+        args[def.name] = def.default;
+      }
+    }
+
+    return args;
+  }
+
+  /**
+   * Get command suggestions for partial input
+   */
+  getSuggestions(partial) {
+    const lower = partial.toLowerCase();
+    const suggestions = [];
+
+    for (const [name, cmd] of this.commands) {
+      if (name.startsWith(lower)) {
+        suggestions.push({ name, description: cmd.description });
+      }
+    }
+
+    for (const [alias, cmdName] of this.aliases) {
+      if (alias.startsWith(lower)) {
+        const cmd = this.commands.get(cmdName);
+        suggestions.push({ 
+          name: alias, 
+          description: `Alias for ${cmdName}`,
+          aliasFor: cmdName
+        });
+      }
+    }
+
+    return suggestions.slice(0, 10);
+  }
+
+  /**
+   * Get autocomplete options for current input
+   */
+  autocomplete(input, context = {}) {
+    const tokens = this.tokenize(input);
+    
+    if (tokens.length <= 1) {
+      return this.getSuggestions(tokens[0] || '');
+    }
+
+    const cmdName = tokens[0].toLowerCase();
+    const resolvedName = this.aliases.get(cmdName) || cmdName;
+    const command = this.commands.get(resolvedName);
+
+    if (!command || !command.autocomplete) {
+      return [];
+    }
+
+    return command.autocomplete(tokens.slice(1), context);
+  }
+
+  /**
+   * Add command to history
+   */
+  addToHistory(input) {
+    // Don't add duplicates consecutively
+    if (this.history[this.history.length - 1] !== input) {
+      this.history.push(input);
+      if (this.history.length > this.maxHistory) {
+        this.history.shift();
+      }
+    }
+    this.historyIndex = this.history.length;
+  }
+
+  /**
+   * Navigate history
+   */
+  historyPrev() {
+    if (this.historyIndex > 0) {
+      this.historyIndex--;
+      return this.history[this.historyIndex];
+    }
+    return null;
+  }
+
+  historyNext() {
+    if (this.historyIndex < this.history.length - 1) {
+      this.historyIndex++;
+      return this.history[this.historyIndex];
+    }
+    this.historyIndex = this.history.length;
+    return '';
+  }
+
+  /**
+   * Get help for a command or all commands
+   */
+  help(commandName = null) {
+    if (commandName) {
+      const resolved = this.aliases.get(commandName.toLowerCase()) || commandName.toLowerCase();
+      const cmd = this.commands.get(resolved);
+      
+      if (!cmd) return null;
+
+      return {
+        name: cmd.name,
+        description: cmd.description,
+        usage: cmd.usage,
+        aliases: cmd.aliases,
+        args: cmd.args,
+        category: cmd.category
+      };
+    }
+
+    // Return all commands grouped by category
+    const categories = {};
+    
+    for (const [name, cmd] of this.commands) {
+      if (!categories[cmd.category]) {
+        categories[cmd.category] = [];
+      }
+      categories[cmd.category].push({
+        name: cmd.name,
+        description: cmd.description,
+        aliases: cmd.aliases
+      });
+    }
+
+    return categories;
+  }
+
+  /**
+   * Get all registered commands
+   */
+  getCommands() {
+    return Array.from(this.commands.values());
+  }
+}
+
+/**
+ * Standard command definitions for NEXUS PROTOCOL
+ */
+export function registerStandardCommands(parser, game) {
+  // Navigation commands
+  parser.register('view', {
+    description: 'View detailed information about a target',
+    usage: 'view <target> [--detail]',
+    aliases: ['v', 'look', 'examine', 'inspect'],
+    category: 'navigation',
+    args: [
+      { name: 'target', required: true, description: 'What to view' }
+    ],
+    handler: async (args, ctx) => {
+      return game.view(args.target, args.detail, ctx);
+    },
+    autocomplete: (tokens, ctx) => {
+      return game.getViewTargets(tokens[0] || '', ctx);
+    }
+  });
+
+  parser.register('goto', {
+    description: 'Navigate to a location or system',
+    usage: 'goto <destination>',
+    aliases: ['go', 'travel', 'jump'],
+    category: 'navigation',
+    args: [
+      { name: 'destination', required: true }
+    ],
+    handler: async (args, ctx) => {
+      return game.goto(args.destination, ctx);
+    }
+  });
+
+  parser.register('map', {
+    description: 'Display the galaxy/system map',
+    usage: 'map [--local] [--filter <type>]',
+    aliases: ['m'],
+    category: 'navigation',
+    handler: async (args, ctx) => {
+      return game.getMap(args.local, args.filter, ctx);
+    }
+  });
+
+  // Interface switching
+  parser.register('switch', {
+    description: 'Switch between interface views',
+    usage: 'switch <strategic|tactical|personal>',
+    aliases: ['sw', 'interface'],
+    category: 'interface',
+    args: [
+      { name: 'view', required: true }
+    ],
+    validate: (args) => {
+      const valid = ['strategic', 'tactical', 'personal', 's', 't', 'p'];
+      if (!valid.includes(args.view?.toLowerCase())) {
+        return 'Valid views: strategic, tactical, personal';
+      }
+      return true;
+    },
+    handler: async (args, ctx) => {
+      return game.switchInterface(args.view, ctx);
+    }
+  });
+
+  // Order commands
+  parser.register('order', {
+    description: 'Issue an order to a unit or faction element',
+    usage: 'order <unit> "<command>"',
+    aliases: ['o', 'command'],
+    category: 'orders',
+    args: [
+      { name: 'unit', required: true },
+      { name: 'command', required: true }
+    ],
+    handler: async (args, ctx) => {
+      return game.issueOrder(args.unit, args.command, ctx);
+    }
+  });
+
+  parser.register('orders', {
+    description: 'View pending orders',
+    usage: 'orders [--unit <name>] [--status <pending|complete|failed>]',
+    category: 'orders',
+    handler: async (args, ctx) => {
+      return game.getOrders(args.unit, args.status, ctx);
+    }
+  });
+
+  // Communication commands
+  parser.register('comms', {
+    description: 'Communication system',
+    usage: 'comms <read|send|list> [target] [message]',
+    aliases: ['c', 'comm', 'message'],
+    category: 'communication',
+    args: [
+      { name: 'action', required: true },
+      { name: 'target', required: false },
+      { name: 'message', required: false }
+    ],
+    handler: async (args, ctx) => {
+      return game.comms(args.action, args.target, args.message, ctx);
+    }
+  });
+
+  // Intelligence commands
+  parser.register('intel', {
+    description: 'Request intelligence report on a target',
+    usage: 'intel <target> [--detailed]',
+    aliases: ['i', 'recon', 'scan'],
+    category: 'intelligence',
+    args: [
+      { name: 'target', required: true }
+    ],
+    handler: async (args, ctx) => {
+      return game.intel(args.target, args.detailed, ctx);
+    }
+  });
+
+  // Status commands
+  parser.register('status', {
+    description: 'Display current status',
+    usage: 'status [--full]',
+    aliases: ['st', 'stat'],
+    category: 'status',
+    handler: async (args, ctx) => {
+      return game.getStatus(args.full, ctx);
+    }
+  });
+
+  parser.register('time', {
+    description: 'Display or control game time',
+    usage: 'time [pause|resume|step|advance <n>]',
+    aliases: ['t'],
+    category: 'system',
+    args: [
+      { name: 'action', required: false },
+      { name: 'amount', required: false }
+    ],
+    handler: async (args, ctx) => {
+      return game.timeControl(args.action, args.amount, ctx);
+    }
+  });
+
+  // System commands
+  parser.register('help', {
+    description: 'Display help information',
+    usage: 'help [command]',
+    aliases: ['h', '?'],
+    category: 'system',
+    args: [
+      { name: 'command', required: false }
+    ],
+    handler: async (args) => {
+      return parser.help(args.command);
+    }
+  });
+
+  parser.register('save', {
+    description: 'Save the current game',
+    usage: 'save [filename]',
+    category: 'system',
+    args: [
+      { name: 'filename', required: false, default: 'autosave' }
+    ],
+    handler: async (args, ctx) => {
+      return game.save(args.filename, ctx);
+    }
+  });
+
+  parser.register('load', {
+    description: 'Load a saved game',
+    usage: 'load <filename>',
+    category: 'system',
+    args: [
+      { name: 'filename', required: true }
+    ],
+    handler: async (args, ctx) => {
+      return game.load(args.filename, ctx);
+    }
+  });
+
+  parser.register('quit', {
+    description: 'Exit the game',
+    usage: 'quit [--nosave]',
+    aliases: ['exit', 'q'],
+    category: 'system',
+    handler: async (args, ctx) => {
+      return game.quit(args.nosave, ctx);
+    }
+  });
+
+  parser.register('clear', {
+    description: 'Clear the screen',
+    usage: 'clear',
+    aliases: ['cls'],
+    category: 'system',
+    handler: async () => {
+      return { action: 'clear' };
+    }
+  });
+
+  return parser;
+}
+
+export default CommandParser;
