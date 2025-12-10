@@ -738,6 +738,158 @@ export function registerStandardCommands(parser, game) {
     }
   });
 
+  // Economy command
+  parser.register('economy', {
+    description: 'View economic summary',
+    usage: 'economy [--system <name>] [--faction <name>]',
+    aliases: ['econ'],
+    category: 'intelligence',
+    handler: async (args, ctx) => {
+      const economy = game.engine.getSystem('economy');
+      const factions = game.engine.getSystem('factions');
+      const universe = game.engine.getSystem('universe');
+
+      let output = '═══════════════════════════════════════════════════════\n';
+      output += '                 ECONOMIC OVERVIEW\n';
+      output += '═══════════════════════════════════════════════════════\n\n';
+
+      // Get resource totals across all entities
+      const totals = {};
+      for (const [id, components] of game.entities.query('Resources')) {
+        for (const [resource, amount] of Object.entries(components.Resources.stored)) {
+          totals[resource] = (totals[resource] || 0) + amount;
+        }
+      }
+
+      output += 'GALAXY RESOURCE TOTALS:\n';
+      for (const [resource, total] of Object.entries(totals)) {
+        output += `  ${resource.padEnd(15)} ${total.toLocaleString().padStart(12)}\n`;
+      }
+
+      // Market count
+      const marketCount = game.entities.count('Market');
+      output += `\nActive Markets: ${marketCount}\n`;
+
+      // Trade routes
+      output += `Trade Routes: ${economy.tradeRoutes.size}\n`;
+
+      return { render: output };
+    }
+  });
+
+  // Markets command
+  parser.register('markets', {
+    description: 'View market prices at current location',
+    usage: 'markets [--resource <type>] [--compare]',
+    category: 'intelligence',
+    handler: async (args, ctx) => {
+      const location = game.entities.getComponent(game.playerEntityId, 'PlayerLocation');
+      if (!location?.systemId) {
+        return { message: 'Location unknown. Use "goto" to travel first.', type: 'error' };
+      }
+
+      const universe = game.engine.getSystem('universe');
+
+      // Find markets in current system (stations with Market component)
+      const markets = [];
+      for (const [id, components] of game.entities.query('Market', 'Identity', 'Orbit')) {
+        if (components.Orbit.parentId === location.systemId) {
+          markets.push({ id, ...components });
+        }
+      }
+
+      if (markets.length === 0) {
+        return { message: 'No markets in this system.', type: 'info' };
+      }
+
+      let output = '═══════════════════════════════════════════════════════\n';
+      output += '                   LOCAL MARKETS\n';
+      output += '═══════════════════════════════════════════════════════\n\n';
+
+      for (const market of markets) {
+        output += `${market.Identity.name}\n`;
+        output += '─'.repeat(40) + '\n';
+        output += 'Resource'.padEnd(15) + 'Price'.padStart(10) + '\n';
+
+        const prices = market.Market.prices;
+        for (const [resource, price] of Object.entries(prices)) {
+          if (args.resource && resource !== args.resource) continue;
+          output += `${resource.padEnd(15)} ${price.toString().padStart(10)} cr\n`;
+        }
+        output += '\n';
+      }
+
+      return { render: output };
+    }
+  });
+
+  // Treaties command
+  parser.register('treaties', {
+    description: 'View active treaties',
+    usage: 'treaties [--faction <name>]',
+    category: 'intelligence',
+    handler: async (args, ctx) => {
+      const politics = game.engine.getSystem('politics');
+      const factions = game.engine.getSystem('factions');
+
+      let output = '═══════════════════════════════════════════════════════\n';
+      output += '                  ACTIVE TREATIES\n';
+      output += '═══════════════════════════════════════════════════════\n\n';
+
+      const activeTreaties = Array.from(politics.treaties.values())
+        .filter(t => t.status === 'active');
+
+      if (activeTreaties.length === 0) {
+        output += 'No active treaties.\n';
+      } else {
+        for (const treaty of activeTreaties) {
+          const proposer = factions.getFaction(treaty.proposer);
+          const recipient = factions.getFaction(treaty.recipient);
+
+          output += `${treaty.name || treaty.type}\n`;
+          output += `  Between: ${proposer?.name || 'Unknown'} and ${recipient?.name || 'Unknown'}\n`;
+          output += `  Duration: ${treaty.duration} ticks remaining\n`;
+          output += '\n';
+        }
+      }
+
+      return { render: output };
+    }
+  });
+
+  // Wars command
+  parser.register('wars', {
+    description: 'View active conflicts',
+    usage: 'wars',
+    category: 'intelligence',
+    handler: async (args, ctx) => {
+      const politics = game.engine.getSystem('politics');
+      const factions = game.engine.getSystem('factions');
+
+      const activeWars = politics.getWars();
+
+      let output = '═══════════════════════════════════════════════════════\n';
+      output += '                  ACTIVE CONFLICTS\n';
+      output += '═══════════════════════════════════════════════════════\n\n';
+
+      if (activeWars.length === 0) {
+        output += 'The galaxy is at peace... for now.\n';
+      } else {
+        for (const war of activeWars) {
+          const attacker = factions.getFaction(war.attacker);
+          const defender = factions.getFaction(war.defender);
+
+          output += `${attacker?.name || 'Unknown'} vs ${defender?.name || 'Unknown'}\n`;
+          output += `  Reason: ${war.reason}\n`;
+          output += `  Started: Tick ${war.startedAt}\n`;
+          output += '\n';
+        }
+      }
+
+      return { render: output };
+    }
+  });
+
   parser.register('quit', {
     description: 'Exit the game',
     usage: 'quit [--nosave]',
