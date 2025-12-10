@@ -7,6 +7,9 @@
 
 import * as readline from 'readline';
 import { Renderer, Colors, Themes } from './Renderer.js';
+import { StrategicView } from './StrategicView.js';
+import { TacticalView } from './TacticalView.js';
+import { PersonalView } from './PersonalView.js';
 
 export class Terminal {
   constructor(game, options = {}) {
@@ -25,7 +28,12 @@ export class Terminal {
     this.running = false;
     this.messageLog = [];
     this.maxMessages = 100;
-    
+
+    // Initialize view modules
+    this.strategicView = new StrategicView(game, this.renderer);
+    this.tacticalView = new TacticalView(game, this.renderer);
+    this.personalView = new PersonalView(game, this.renderer);
+
     // Bind methods
     this.handleInput = this.handleInput.bind(this);
   }
@@ -130,21 +138,34 @@ ${Colors.reset}`;
     if (!this.running) return;
 
     const trimmed = input.trim();
-    
+
     if (!trimmed) {
+      this.prompt();
+      return;
+    }
+
+    // Check for view-specific commands first
+    const viewResult = this.handleViewCommand(trimmed);
+    if (viewResult) {
+      if (viewResult.refresh) {
+        this.refresh();
+      }
+      if (viewResult.message) {
+        this.log(viewResult.message, viewResult.type || 'info');
+      }
       this.prompt();
       return;
     }
 
     // Process command
     const result = await this.game.executeCommand(trimmed, this.getContext());
-    
+
     // Handle result
     if (result.success) {
       if (result.result) {
         this.displayResult(result.result);
       }
-      
+
       // Check for special actions
       if (result.result?.action === 'clear') {
         this.clear();
@@ -158,11 +179,11 @@ ${Colors.reset}`;
       }
     } else {
       this.log(result.error, 'error');
-      
+
       if (result.usage) {
         this.log(`Usage: ${result.usage}`, 'info');
       }
-      
+
       if (result.suggestions?.length) {
         const suggestions = result.suggestions.map(s => s.name).join(', ');
         this.log(`Did you mean: ${suggestions}?`, 'info');
@@ -170,6 +191,24 @@ ${Colors.reset}`;
     }
 
     this.prompt();
+  }
+
+  /**
+   * Handle view-specific commands
+   */
+  handleViewCommand(input) {
+    const [command, ...args] = input.trim().split(/\s+/);
+
+    switch (this.currentView) {
+      case 'strategic':
+        return this.strategicView.handleCommand(command, args);
+      case 'tactical':
+        return this.tacticalView.handleCommand(command, args);
+      case 'personal':
+        return this.personalView.handleCommand(command, args);
+      default:
+        return null;
+    }
   }
 
   /**
@@ -249,7 +288,12 @@ ${Colors.reset}`;
       system: this.currentSystem,
       location: this.currentLocation,
       player: this.game.player,
-      game: this.game
+      game: this.game,
+      // Add view-specific context
+      strategicOptions: this.strategicView.options,
+      tacticalOptions: this.tacticalView.options,
+      personalOptions: this.personalView.options,
+      selectedEntity: this.tacticalView.selectedEntity
     };
   }
 
@@ -328,133 +372,33 @@ ${Colors.reset}`;
    * Display strategic (galaxy) view
    */
   displayStrategicView() {
-    const universe = this.game.engine?.getSystem('universe');
-    if (!universe) {
-      console.log(this.renderer.themed('Universe data unavailable', 'warning'));
-      return;
-    }
-
-    // Get stars and routes for map
-    const stars = Array.from(universe.getStars()).map(([id, components]) => ({
-      id,
-      name: components.Identity.name,
-      position: components.Position,
-      stellarClass: components.Star.spectralClass
-    }));
-
-    const routes = Array.from(universe.getRoutes()).map(([id, components]) => ({
-      id,
-      from: components.Route.from,
-      to: components.Route.to,
-      distance: components.Route.distance
-    }));
-
-    // Render map
-    const mapOptions = {
-      centerX: 50,
-      centerY: 50,
-      zoom: 0.6,
-      selectedId: this.currentSystem
-    };
-
-    console.log(this.renderer.galaxyMap(stars, routes, 60, 15, mapOptions));
-
-    // Show star list
-    console.log('');
-    console.log(this.renderer.themed('Known Systems:', 'secondary'));
-    const starList = stars.slice(0, 10).map(s => 
-      `  ${s.stellarClass} ${s.name}`
-    );
-    console.log(starList.join('\n'));
-    
-    if (stars.length > 10) {
-      console.log(this.renderer.themed(`  ... and ${stars.length - 10} more`, 'muted'));
-    }
+    const output = this.strategicView.render();
+    console.log(output);
   }
 
   /**
    * Display tactical (system) view
    */
   displayTacticalView() {
-    if (!this.currentSystem) {
-      console.log(this.renderer.themed('No system selected. Use "goto <system>" to select one.', 'warning'));
-      return;
+    // Sync current system from player location
+    const location = this.game.entities.getComponent(
+      this.game.playerEntityId,
+      'PlayerLocation'
+    );
+    if (location?.systemId) {
+      this.tacticalView.setSystem(location.systemId);
     }
 
-    const universe = this.game.engine?.getSystem('universe');
-    const starData = universe?.getStar(this.currentSystem);
-    
-    if (!starData) {
-      console.log(this.renderer.themed('System data unavailable', 'warning'));
-      return;
-    }
-
-    console.log(this.renderer.themed(`═══ ${starData.Identity.name} System ═══`, 'highlight'));
-    console.log(this.renderer.themed(`${starData.Star.spectralClass}-class star`, 'muted'));
-    console.log('');
-
-    // List planets
-    const planets = Array.from(universe.getPlanetsInSystem(this.currentSystem));
-    
-    if (planets.length > 0) {
-      console.log(this.renderer.themed('Planets:', 'secondary'));
-      const planetData = planets.map(([id, p]) => [
-        p.Identity.name,
-        p.Planet.planetType,
-        p.Planet.atmosphere,
-        p.Planet.population > 0 ? p.Planet.population.toLocaleString() : '-'
-      ]);
-      console.log(this.renderer.table(
-        ['Name', 'Type', 'Atmosphere', 'Population'],
-        planetData
-      ));
-    }
-
-    // Show connections
-    const connections = universe.getConnectedSystems(this.currentSystem);
-    if (connections.length > 0) {
-      console.log('');
-      console.log(this.renderer.themed('Jump Routes:', 'secondary'));
-      for (const conn of connections) {
-        const targetStar = universe.getStar(conn.id);
-        console.log(`  → ${targetStar?.Identity.name || 'Unknown'} (${conn.distance.toFixed(1)} LY)`);
-      }
-    }
+    const output = this.tacticalView.render();
+    console.log(output);
   }
 
   /**
    * Display personal (character) view
    */
   displayPersonalView() {
-    const player = this.game.player;
-    
-    if (!player) {
-      console.log(this.renderer.themed('No active character. Character system not initialized.', 'warning'));
-      return;
-    }
-
-    console.log(this.renderer.themed(`═══ ${player.name} ═══`, 'highlight'));
-    console.log(this.renderer.themed(`${player.role} | ${player.faction}`, 'muted'));
-    console.log('');
-
-    // Stats
-    if (player.stats) {
-      console.log(this.renderer.progressBar(player.stats.health, 100, 20, 'Health'));
-      console.log(this.renderer.progressBar(player.stats.morale, 100, 20, 'Morale'));
-      console.log(this.renderer.progressBar(player.stats.energy, 100, 20, 'Energy'));
-    }
-
-    console.log('');
-    
-    // Location
-    console.log(this.renderer.themed('Location:', 'secondary'));
-    console.log(`  ${this.currentLocation || 'Unknown'}`);
-
-    // Credits
-    if (player.inventory) {
-      console.log('');
-      console.log(this.renderer.themed(`Credits: ${player.inventory.credits.toLocaleString()}`, 'primary'));
-    }
+    const output = this.personalView.render();
+    console.log(output);
   }
 
   /**
@@ -495,6 +439,7 @@ ${Colors.reset}`;
    */
   setCurrentSystem(systemId) {
     this.currentSystem = systemId;
+    this.tacticalView.setSystem(systemId);
   }
 
   /**

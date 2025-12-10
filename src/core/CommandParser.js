@@ -890,6 +890,121 @@ export function registerStandardCommands(parser, game) {
     }
   });
 
+  // Navigation drill-down commands
+  parser.register('inspect', {
+    description: 'Inspect an entity for detailed information',
+    usage: 'inspect <target>',
+    aliases: ['examine', 'look'],
+    category: 'navigation',
+    args: [
+      { name: 'target', required: true, description: 'Entity to inspect' }
+    ],
+    handler: async (args, ctx) => {
+      const target = args.target.toLowerCase();
+      const universe = game.engine.getSystem('universe');
+      const factions = game.engine.getSystem('factions');
+
+      // Check stars
+      for (const [id, components] of game.entities.query('Star', 'Identity')) {
+        if (components.Identity.name.toLowerCase().includes(target)) {
+          return {
+            action: 'switch',
+            view: 'tactical',
+            systemId: id,
+            message: `Switching to tactical view of ${components.Identity.name}`,
+            type: 'info'
+          };
+        }
+      }
+
+      // Check factions
+      const faction = factions.getFactionByName(target);
+      if (faction) {
+        return factions.getFactionDetails(target);
+      }
+
+      // Check planets in current system
+      const location = game.entities.getComponent(game.playerEntityId, 'PlayerLocation');
+      if (location?.systemId) {
+        for (const [id, components] of universe.getPlanetsInSystem(location.systemId)) {
+          if (components.Identity.name.toLowerCase().includes(target)) {
+            return {
+              message: `Inspecting ${components.Identity.name}`,
+              render: `Planet: ${components.Identity.name}\nType: ${components.Planet.planetType}\nAtmosphere: ${components.Planet.atmosphere}\nPopulation: ${components.Planet.population.toLocaleString()}`,
+              type: 'info'
+            };
+          }
+        }
+      }
+
+      return { message: `Unknown target: "${args.target}"`, type: 'error' };
+    }
+  });
+
+  parser.register('up', {
+    description: 'Navigate up one level (planet→system→galaxy)',
+    usage: 'up',
+    aliases: ['back', '..'],
+    category: 'navigation',
+    handler: async (args, ctx) => {
+      const currentView = ctx.view || 'strategic';
+
+      if (currentView === 'tactical') {
+        return {
+          action: 'switch',
+          view: 'strategic',
+          message: 'Switching to strategic view',
+          type: 'info'
+        };
+      }
+
+      if (currentView === 'personal') {
+        return {
+          action: 'switch',
+          view: 'tactical',
+          message: 'Switching to tactical view',
+          type: 'info'
+        };
+      }
+
+      return { message: 'Already at top level.', type: 'info' };
+    }
+  });
+
+  parser.register('down', {
+    description: 'Navigate down one level (galaxy→system→personal)',
+    usage: 'down',
+    aliases: ['enter'],
+    category: 'navigation',
+    handler: async (args, ctx) => {
+      const currentView = ctx.view || 'strategic';
+
+      if (currentView === 'strategic') {
+        const location = game.entities.getComponent(game.playerEntityId, 'PlayerLocation');
+        if (location?.systemId) {
+          return {
+            action: 'switch',
+            view: 'tactical',
+            message: 'Switching to tactical view',
+            type: 'info'
+          };
+        }
+        return { message: 'Travel to a system first with "goto <system>"', type: 'warning' };
+      }
+
+      if (currentView === 'tactical') {
+        return {
+          action: 'switch',
+          view: 'personal',
+          message: 'Switching to personal view',
+          type: 'info'
+        };
+      }
+
+      return { message: 'Already at bottom level.', type: 'info' };
+    }
+  });
+
   parser.register('quit', {
     description: 'Exit the game',
     usage: 'quit [--nosave]',
