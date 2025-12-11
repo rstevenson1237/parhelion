@@ -50,12 +50,71 @@ export const Components = {
   }),
   
   // Character
-  Character: (role, skills = {}, traits = [], background = '') => ({ 
-    role, skills, traits, background 
+  Character: (role, skills = {}, traits = [], background = '') => ({
+    role, skills, traits, background
   }),
-  Stats: (health = 100, morale = 100, energy = 100) => ({ health, morale, energy }),
+  Stats: (health = 100, morale = 100, energy = 100, maxHealth = 100) => ({
+    health, morale, energy, maxHealth
+  }),
   Inventory: (items = [], credits = 0, capacity = 100) => ({ items, credits, capacity }),
   Social: (contacts = [], enemies = [], allies = []) => ({ contacts, enemies, allies }),
+
+  // Character creation and progression
+  Background: (origin, profession, history = '') => ({
+    origin,        // homeworld, station, spacer
+    profession,    // merchant, military, scientist, diplomat, criminal
+    history        // backstory text
+  }),
+
+  // Detailed skills
+  Skills: (skills = {}) => ({
+    // Combat skills
+    combat: skills.combat || 0,
+    tactics: skills.tactics || 0,
+
+    // Technical skills
+    engineering: skills.engineering || 0,
+    piloting: skills.piloting || 0,
+    hacking: skills.hacking || 0,
+
+    // Social skills
+    diplomacy: skills.diplomacy || 0,
+    leadership: skills.leadership || 0,
+    deception: skills.deception || 0,
+
+    // Knowledge skills
+    science: skills.science || 0,
+    medicine: skills.medicine || 0,
+    trade: skills.trade || 0
+  }),
+
+  // Character attributes
+  Attributes: (attrs = {}) => ({
+    strength: attrs.strength || 10,
+    dexterity: attrs.dexterity || 10,
+    constitution: attrs.constitution || 10,
+    intelligence: attrs.intelligence || 10,
+    wisdom: attrs.wisdom || 10,
+    charisma: attrs.charisma || 10
+  }),
+
+  // Equipment slots
+  Equipment: (equipped = {}) => ({
+    weapon: equipped.weapon || null,
+    armor: equipped.armor || null,
+    tool: equipped.tool || null,
+    implant: equipped.implant || null
+  }),
+
+  // Social connections
+  Contacts: (contacts = []) => ({
+    contacts  // Array of { id, name, faction, relation, type }
+  }),
+
+  // Reputation with factions
+  Reputation: (standings = {}) => ({
+    standings  // Map of factionId -> reputation value (-100 to 100)
+  }),
   
   // Communication
   Comms: (inbox = [], outbox = [], channels = []) => ({ inbox, outbox, channels }),

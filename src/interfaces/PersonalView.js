@@ -96,14 +96,29 @@ ${this.renderer.themed(`${player.role} | ${player.faction}`, 'muted')}
    * Render character status bars
    */
   renderCharacterStatus() {
-    const player = this.game.player;
-    const stats = player.stats || { health: 100, morale: 100, energy: 100 };
+    const attributes = this.game.entities.getComponent(
+      this.game.playerEntityId, 'Attributes'
+    );
+    const stats = this.game.entities.getComponent(
+      this.game.playerEntityId, 'Stats'
+    );
 
     const lines = [this.renderer.themed('STATUS', 'secondary')];
 
-    lines.push(this.renderer.progressBar(stats.health, 100, 25, 'Health', this.getHealthColor(stats.health)));
-    lines.push(this.renderer.progressBar(stats.morale, 100, 25, 'Morale', this.getMoraleColor(stats.morale)));
-    lines.push(this.renderer.progressBar(stats.energy, 100, 25, 'Energy', Colors.cyan));
+    if (stats) {
+      lines.push(this.renderer.progressBar(stats.health, stats.maxHealth || 100, 25, 'Health', this.getHealthColor(stats.health)));
+      lines.push(this.renderer.progressBar(stats.morale, 100, 25, 'Morale', this.getMoraleColor(stats.morale)));
+      lines.push(this.renderer.progressBar(stats.energy, 100, 25, 'Energy', Colors.cyan));
+    }
+
+    if (attributes) {
+      lines.push('');
+      lines.push(this.renderer.themed('ATTRIBUTES', 'secondary'));
+      const attrLine1 = `STR: ${attributes.strength}  DEX: ${attributes.dexterity}  CON: ${attributes.constitution}`;
+      const attrLine2 = `INT: ${attributes.intelligence}  WIS: ${attributes.wisdom}  CHA: ${attributes.charisma}`;
+      lines.push(`  ${attrLine1}`);
+      lines.push(`  ${attrLine2}`);
+    }
 
     return lines.join('\n');
   }
@@ -186,19 +201,47 @@ ${this.renderer.themed(`${player.role} | ${player.faction}`, 'muted')}
    * Render inventory
    */
   renderInventory() {
-    const player = this.game.player;
-    const inventory = player.inventory || { credits: 0, items: [] };
+    const inventory = this.game.entities.getComponent(
+      this.game.playerEntityId, 'Inventory'
+    );
+    const equipment = this.game.entities.getComponent(
+      this.game.playerEntityId, 'Equipment'
+    );
 
     const lines = [this.renderer.themed('INVENTORY', 'secondary')];
 
+    if (!inventory) {
+      lines.push(this.renderer.themed('  No inventory data', 'muted'));
+      return lines.join('\n');
+    }
+
     lines.push(`  Credits: ${inventory.credits.toLocaleString()} cr`);
+    lines.push(`  Capacity: ${inventory.items.length}/${inventory.capacity}`);
     lines.push('');
 
-    if (!inventory.items || inventory.items.length === 0) {
-      lines.push(this.renderer.themed('  No items.', 'muted'));
+    // Equipment
+    lines.push(this.renderer.themed('  EQUIPPED:', 'muted'));
+    for (const slot of ['weapon', 'armor', 'tool', 'implant']) {
+      const itemId = equipment?.[slot];
+      const item = itemId ? inventory.items.find(i => i.id === itemId) : null;
+      lines.push(`    ${slot}: ${item?.name || '[empty]'}`);
+    }
+
+    // Items
+    lines.push('');
+    lines.push(this.renderer.themed('  ITEMS:', 'muted'));
+    const unequipped = inventory.items.filter(i =>
+      !Object.values(equipment || {}).includes(i.id)
+    );
+
+    if (unequipped.length === 0) {
+      lines.push('    No unequipped items');
     } else {
-      for (const item of inventory.items) {
-        lines.push(`  • ${item.name} x${item.quantity || 1}`);
+      for (const item of unequipped.slice(0, 8)) {
+        lines.push(`    • ${item.name}`);
+      }
+      if (unequipped.length > 8) {
+        lines.push(`    ... and ${unequipped.length - 8} more`);
       }
     }
 
@@ -209,18 +252,22 @@ ${this.renderer.themed(`${player.role} | ${player.faction}`, 'muted')}
    * Render contacts list
    */
   renderContacts() {
-    const player = this.game.player;
-    const contacts = player.contacts || [];
+    const contacts = this.game.entities.getComponent(
+      this.game.playerEntityId, 'Contacts'
+    );
 
     const lines = [this.renderer.themed('CONTACTS', 'secondary')];
 
-    if (contacts.length === 0) {
+    if (!contacts || contacts.contacts.length === 0) {
       lines.push(this.renderer.themed('  No contacts yet.', 'muted'));
     } else {
-      for (const contact of contacts) {
+      for (const contact of contacts.contacts.slice(0, 10)) {
         const relation = contact.relation > 0 ? '+' : '';
         lines.push(`  ${contact.name} [${relation}${contact.relation}]`);
-        lines.push(this.renderer.themed(`    ${contact.role} - ${contact.faction}`, 'muted'));
+        lines.push(this.renderer.themed(`    ${contact.type} - ${contact.faction || 'Independent'}`, 'muted'));
+      }
+      if (contacts.contacts.length > 10) {
+        lines.push(`  ... and ${contacts.contacts.length - 10} more`);
       }
     }
 
@@ -231,19 +278,24 @@ ${this.renderer.themed(`${player.role} | ${player.faction}`, 'muted')}
    * Render skills
    */
   renderSkills() {
-    const player = this.game.player;
-    const skills = player.skills || {};
+    const skills = this.game.entities.getComponent(
+      this.game.playerEntityId, 'Skills'
+    );
 
     const lines = [this.renderer.themed('SKILLS', 'secondary')];
 
-    const skillList = Object.entries(skills);
-    if (skillList.length === 0) {
-      lines.push(this.renderer.themed('  No skills trained.', 'muted'));
-    } else {
-      for (const [skill, level] of skillList) {
-        const bar = this.renderer.progressBar(level, 10, 15, '', Colors.cyan);
-        lines.push(`  ${skill.padEnd(15)} ${bar} ${level}/10`);
-      }
+    if (!skills) {
+      lines.push(this.renderer.themed('  No skills data', 'muted'));
+      return lines.join('\n');
+    }
+
+    const sortedSkills = Object.entries(skills)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+
+    for (const [skill, value] of sortedSkills) {
+      const bar = this.renderer.progressBar(value, 100, 15, null);
+      lines.push(`  ${skill.padEnd(12)} ${bar} ${value}`);
     }
 
     return lines.join('\n');

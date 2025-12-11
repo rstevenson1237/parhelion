@@ -1005,6 +1005,138 @@ export function registerStandardCommands(parser, game) {
     }
   });
 
+  // Character commands
+  parser.register('create', {
+    description: 'Create a new character',
+    usage: 'create character [--name <name>] [--origin <origin>] [--profession <profession>]',
+    aliases: ['new'],
+    category: 'character',
+    args: [
+      { name: 'type', required: true },
+      { name: 'name', required: false },
+      { name: 'origin', required: false },
+      { name: 'profession', required: false }
+    ],
+    handler: async (args, ctx) => {
+      if (args.type !== 'character') {
+        return { message: 'Unknown creation type. Use: create character', type: 'error' };
+      }
+      return game.createCharacter(args, ctx);
+    }
+  });
+
+  parser.register('origins', {
+    description: 'List available character origins',
+    usage: 'origins',
+    category: 'character',
+    handler: async (args, ctx) => {
+      const characters = game.engine.getSystem('characters');
+      const origins = characters.getOrigins();
+
+      let output = '═══════════════════════════════════════════════════════\n';
+      output += '                  CHARACTER ORIGINS\n';
+      output += '═══════════════════════════════════════════════════════\n\n';
+
+      for (const origin of origins) {
+        output += `${origin.name.toUpperCase()}\n`;
+        output += `  ${origin.description}\n`;
+        output += `  Starting Credits: ${origin.startingCredits.toLocaleString()}\n`;
+        output += `  Bonuses: ${Object.entries(origin.bonuses).map(([k, v]) => `+${v} ${k}`).join(', ')}\n`;
+        output += '\n';
+      }
+
+      return { render: output };
+    }
+  });
+
+  parser.register('professions', {
+    description: 'List available character professions',
+    usage: 'professions',
+    category: 'character',
+    handler: async (args, ctx) => {
+      const characters = game.engine.getSystem('characters');
+      const professions = characters.getProfessions();
+
+      let output = '═══════════════════════════════════════════════════════\n';
+      output += '                 CHARACTER PROFESSIONS\n';
+      output += '═══════════════════════════════════════════════════════\n\n';
+
+      for (const prof of professions) {
+        output += `${prof.name.toUpperCase()}\n`;
+        output += `  ${prof.description}\n`;
+        output += `  Primary Skills: ${prof.primarySkills.join(', ')}\n`;
+        output += `  Starting Equipment: ${prof.startingEquipment.join(', ')}\n`;
+        output += '\n';
+      }
+
+      return { render: output };
+    }
+  });
+
+  parser.register('skills', {
+    description: 'View character skills',
+    usage: 'skills [category]',
+    aliases: ['skill'],
+    category: 'character',
+    handler: async (args, ctx) => {
+      return game.getCharacterSkills(args.category, ctx);
+    }
+  });
+
+  parser.register('inventory', {
+    description: 'View inventory and equipment',
+    usage: 'inventory',
+    aliases: ['inv', 'i', 'items'],
+    category: 'character',
+    handler: async (args, ctx) => {
+      return game.getInventory(ctx);
+    }
+  });
+
+  parser.register('equip', {
+    description: 'Equip an item',
+    usage: 'equip <item_name>',
+    category: 'character',
+    args: [
+      { name: 'item', required: true }
+    ],
+    handler: async (args, ctx) => {
+      return game.equipItem(args.item, ctx);
+    }
+  });
+
+  parser.register('unequip', {
+    description: 'Unequip an item from a slot',
+    usage: 'unequip <slot>',
+    category: 'character',
+    args: [
+      { name: 'slot', required: true }
+    ],
+    handler: async (args, ctx) => {
+      return game.unequipItem(args.slot, ctx);
+    }
+  });
+
+  parser.register('contacts', {
+    description: 'View contacts and relationships',
+    usage: 'contacts [filter]',
+    aliases: ['contact'],
+    category: 'character',
+    handler: async (args, ctx) => {
+      return game.getContacts(args.filter, ctx);
+    }
+  });
+
+  parser.register('reputation', {
+    description: 'View faction reputation',
+    usage: 'reputation [faction]',
+    aliases: ['rep', 'standing'],
+    category: 'character',
+    handler: async (args, ctx) => {
+      return game.getReputation(args.faction, ctx);
+    }
+  });
+
   parser.register('quit', {
     description: 'Exit the game',
     usage: 'quit [--nosave]',

@@ -13,6 +13,7 @@ import { FactionSystem } from './systems/FactionSystem.js';
 import { EconomySystem } from './systems/EconomySystem.js';
 import { PoliticsSystem } from './systems/PoliticsSystem.js';
 import { EventSystem } from './systems/EventSystem.js';
+import { CharacterSystem } from './systems/CharacterSystem.js';
 import { Random } from './utils/Random.js';
 import fs from 'fs';
 import path from 'path';
@@ -94,6 +95,12 @@ export class Game {
     factionSystem.setRNG(this.rng.next.bind(this.rng));
     this.engine.registerSystem('factions', factionSystem, 40);
 
+    // Initialize character system (priority 50)
+    const characterSystem = new CharacterSystem();
+    characterSystem.entities = this.entities;
+    characterSystem.setRNG(this.rng.next.bind(this.rng));
+    this.engine.registerSystem('characters', characterSystem, 50);
+
     // Initialize command parser
     this.commands = new CommandParser();
     registerStandardCommands(this.commands, this);
@@ -128,10 +135,28 @@ export class Game {
       Components.Character(this.player.role, {}, [], '')
     );
     this.entities.addComponent(this.playerEntityId, 'Stats',
-      Components.Stats(100, 100, 100)
+      Components.Stats(100, 100, 100, 100)
     );
     this.entities.addComponent(this.playerEntityId, 'Inventory',
       Components.Inventory([], this.player.inventory.credits, 100)
+    );
+    this.entities.addComponent(this.playerEntityId, 'Background',
+      Components.Background('coreworlder', 'merchant', '')
+    );
+    this.entities.addComponent(this.playerEntityId, 'Skills',
+      Components.Skills({})
+    );
+    this.entities.addComponent(this.playerEntityId, 'Attributes',
+      Components.Attributes({})
+    );
+    this.entities.addComponent(this.playerEntityId, 'Equipment',
+      Components.Equipment({})
+    );
+    this.entities.addComponent(this.playerEntityId, 'Contacts',
+      Components.Contacts([])
+    );
+    this.entities.addComponent(this.playerEntityId, 'Reputation',
+      Components.Reputation({})
     );
     // Position will be set when player spawns at a location
 
@@ -583,6 +608,263 @@ Commands: time pause | time resume | time step | time advance <n>
       await this.save('autosave', context);
     }
     return { action: 'quit' };
+  }
+
+  /**
+   * Character System Methods
+   */
+
+  /**
+   * Create a new character
+   */
+  async createCharacter(options, context) {
+    const characters = this.engine.getSystem('characters');
+
+    const result = characters.createCharacter({
+      name: options.name || this.player.name,
+      origin: options.origin,
+      profession: options.profession,
+      faction: this.player.faction
+    });
+
+    // Update player reference
+    this.playerEntityId = result.id;
+    this.player = {
+      ...this.player,
+      name: result.name,
+      role: result.profession.name,
+      stats: {
+        health: 100,
+        morale: 100,
+        energy: 100
+      },
+      inventory: {
+        items: [],
+        credits: result.credits,
+        capacity: 100
+      }
+    };
+
+    let output = '═══════════════════════════════════════════════════════\n';
+    output += '              CHARACTER CREATED\n';
+    output += '═══════════════════════════════════════════════════════\n\n';
+    output += `Name: ${result.name}\n`;
+    output += `Origin: ${result.origin.name}\n`;
+    output += `Profession: ${result.profession.name}\n`;
+    output += `Starting Credits: ${result.credits.toLocaleString()}\n\n`;
+    output += 'Attributes:\n';
+    for (const [attr, value] of Object.entries(result.attributes)) {
+      output += `  ${attr}: ${value}\n`;
+    }
+    output += '\nTop Skills:\n';
+    const topSkills = Object.entries(result.skills)
+      .filter(([_, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    for (const [skill, value] of topSkills) {
+      output += `  ${skill}: ${value}\n`;
+    }
+
+    return { render: output, type: 'success' };
+  }
+
+  /**
+   * Get character skills
+   */
+  async getCharacterSkills(category, context) {
+    const skills = this.entities.getComponent(this.playerEntityId, 'Skills');
+    const characters = this.engine.getSystem('characters');
+
+    if (!skills) {
+      return { message: 'No skills data available.', type: 'error' };
+    }
+
+    let output = '═══════════════════════════════════════════════════════\n';
+    output += '                   CHARACTER SKILLS\n';
+    output += '═══════════════════════════════════════════════════════\n\n';
+
+    const categories = {
+      combat: ['combat', 'tactics'],
+      technical: ['engineering', 'piloting', 'hacking'],
+      social: ['diplomacy', 'leadership', 'deception'],
+      knowledge: ['science', 'medicine', 'trade']
+    };
+
+    for (const [cat, skillList] of Object.entries(categories)) {
+      if (category && category !== cat) continue;
+
+      output += `${cat.toUpperCase()}\n`;
+      for (const skillName of skillList) {
+        const baseValue = skills[skillName] || 0;
+        const effectiveValue = characters.getEffectiveSkill(this.playerEntityId, skillName);
+        const bonus = effectiveValue - baseValue;
+        const bonusStr = bonus > 0 ? ` (+${bonus})` : '';
+        output += `  ${skillName}: ${baseValue}${bonusStr}\n`;
+      }
+      output += '\n';
+    }
+
+    return { render: output };
+  }
+
+  /**
+   * Get inventory
+   */
+  async getInventory(context) {
+    const inventory = this.entities.getComponent(this.playerEntityId, 'Inventory');
+    const equipment = this.entities.getComponent(this.playerEntityId, 'Equipment');
+
+    if (!inventory) {
+      return { message: 'No inventory data available.', type: 'error' };
+    }
+
+    let output = '═══════════════════════════════════════════════════════\n';
+    output += '                     INVENTORY\n';
+    output += '═══════════════════════════════════════════════════════\n\n';
+
+    output += `Credits: ${inventory.credits.toLocaleString()} cr\n`;
+    output += `Capacity: ${inventory.items.length}/${inventory.capacity}\n\n`;
+
+    output += 'EQUIPPED:\n';
+    for (const slot of ['weapon', 'armor', 'tool', 'implant']) {
+      const itemId = equipment?.[slot];
+      if (itemId) {
+        const item = inventory.items.find(i => i.id === itemId);
+        output += `  ${slot}: ${item?.name || 'Unknown'}\n`;
+      } else {
+        output += `  ${slot}: [empty]\n`;
+      }
+    }
+
+    output += '\nITEMS:\n';
+    if (inventory.items.length === 0) {
+      output += '  No items in inventory.\n';
+    } else {
+      for (const item of inventory.items) {
+        const equipped = Object.values(equipment || {}).includes(item.id);
+        const eqStr = equipped ? ' [E]' : '';
+        output += `  ${item.name}${eqStr} - ${item.value} cr\n`;
+      }
+    }
+
+    return { render: output };
+  }
+
+  /**
+   * Equip item
+   */
+  async equipItem(itemName, context) {
+    const inventory = this.entities.getComponent(this.playerEntityId, 'Inventory');
+    const characters = this.engine.getSystem('characters');
+
+    const item = inventory?.items.find(i =>
+      i.name.toLowerCase().includes(itemName.toLowerCase())
+    );
+
+    if (!item) {
+      return { message: `Item not found: ${itemName}`, type: 'error' };
+    }
+
+    const result = characters.equipItem(this.playerEntityId, item.id);
+
+    if (!result.success) {
+      return { message: result.reason, type: 'error' };
+    }
+
+    return {
+      message: `Equipped ${item.name} to ${result.slot} slot.`,
+      type: 'success'
+    };
+  }
+
+  /**
+   * Unequip item
+   */
+  async unequipItem(slot, context) {
+    const characters = this.engine.getSystem('characters');
+    const inventory = this.entities.getComponent(this.playerEntityId, 'Inventory');
+
+    const result = characters.unequipItem(this.playerEntityId, slot.toLowerCase());
+
+    if (!result.success) {
+      return { message: result.reason, type: 'error' };
+    }
+
+    const item = inventory?.items.find(i => i.id === result.item);
+
+    return {
+      message: `Unequipped ${item?.name || 'item'} from ${slot} slot.`,
+      type: 'success'
+    };
+  }
+
+  /**
+   * Get contacts
+   */
+  async getContacts(filter, context) {
+    const contacts = this.entities.getComponent(this.playerEntityId, 'Contacts');
+
+    if (!contacts) {
+      return { message: 'No contacts data available.', type: 'error' };
+    }
+
+    let output = '═══════════════════════════════════════════════════════\n';
+    output += '                      CONTACTS\n';
+    output += '═══════════════════════════════════════════════════════\n\n';
+
+    if (contacts.contacts.length === 0) {
+      output += 'No contacts yet. Meet NPCs to add them.\n';
+    } else {
+      const filtered = filter
+        ? contacts.contacts.filter(c => c.type === filter)
+        : contacts.contacts;
+
+      for (const contact of filtered) {
+        const relationStr = contact.relation > 0 ? `+${contact.relation}` : contact.relation;
+        output += `${contact.name}\n`;
+        output += `  Type: ${contact.type} | Relation: ${relationStr}\n`;
+        if (contact.faction) {
+          output += `  Faction: ${contact.faction}\n`;
+        }
+        output += '\n';
+      }
+    }
+
+    return { render: output };
+  }
+
+  /**
+   * Get reputation
+   */
+  async getReputation(factionFilter, context) {
+    const reputation = this.entities.getComponent(this.playerEntityId, 'Reputation');
+    const factions = this.engine.getSystem('factions');
+    const characters = this.engine.getSystem('characters');
+
+    if (!reputation) {
+      return { message: 'No reputation data available.', type: 'error' };
+    }
+
+    let output = '═══════════════════════════════════════════════════════\n';
+    output += '                 FACTION REPUTATION\n';
+    output += '═══════════════════════════════════════════════════════\n\n';
+
+    const allFactions = factions.getFactions();
+
+    for (const faction of allFactions) {
+      if (factionFilter && !faction.name.toLowerCase().includes(factionFilter.toLowerCase())) {
+        continue;
+      }
+
+      const value = reputation.standings[faction.id] || 0;
+      const standing = characters.getReputationStanding(value);
+
+      output += `${faction.name}\n`;
+      output += `  Standing: ${standing.level} (${value})\n`;
+      output += '\n';
+    }
+
+    return { render: output };
   }
 }
 
