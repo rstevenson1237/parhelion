@@ -14,6 +14,9 @@ import { EconomySystem } from './systems/EconomySystem.js';
 import { PoliticsSystem } from './systems/PoliticsSystem.js';
 import { EventSystem } from './systems/EventSystem.js';
 import { CharacterSystem } from './systems/CharacterSystem.js';
+import { OrderSystem } from './systems/OrderSystem.js';
+import { MessageSystem } from './systems/MessageSystem.js';
+import { IntelSystem } from './systems/IntelSystem.js';
 import { Random } from './utils/Random.js';
 import fs from 'fs';
 import path from 'path';
@@ -100,6 +103,24 @@ export class Game {
     characterSystem.entities = this.entities;
     characterSystem.setRNG(this.rng.next.bind(this.rng));
     this.engine.registerSystem('characters', characterSystem, 50);
+
+    // Initialize order system (priority 55)
+    const orderSystem = new OrderSystem();
+    orderSystem.entities = this.entities;
+    orderSystem.setRNG(this.rng.next.bind(this.rng));
+    this.engine.registerSystem('orders', orderSystem, 55);
+
+    // Initialize message system (priority 60)
+    const messageSystem = new MessageSystem();
+    messageSystem.entities = this.entities;
+    messageSystem.setRNG(this.rng.next.bind(this.rng));
+    this.engine.registerSystem('messages', messageSystem, 60);
+
+    // Initialize intel system (priority 65)
+    const intelSystem = new IntelSystem();
+    intelSystem.entities = this.entities;
+    intelSystem.setRNG(this.rng.next.bind(this.rng));
+    this.engine.registerSystem('intel', intelSystem, 65);
 
     // Initialize command parser
     this.commands = new CommandParser();
@@ -406,48 +427,418 @@ export class Game {
   }
 
   /**
-   * Issue an order
+   * Issue an order to a unit
    */
-  async issueOrder(unit, command, context) {
-    // Placeholder for order system
+  async issueOrder(unitName, commandStr, context) {
+    const orderSystem = this.engine.getSystem('orders');
+
+    // Parse the command string for order type and target
+    const parsed = this.parseOrderCommand(commandStr);
+    if (!parsed.success) {
+      return { message: parsed.error, type: 'error' };
+    }
+
+    // Find the unit by name
+    const unitId = this.findUnitByName(unitName);
+    if (!unitId) {
+      return { message: `Unknown unit: "${unitName}"`, type: 'error' };
+    }
+
+    // Find target if specified
+    let targetId = null;
+    if (parsed.targetName) {
+      targetId = this.findTargetByName(parsed.targetName);
+    }
+
+    // Issue the order
+    const result = orderSystem.issueOrder(
+      this.playerEntityId,
+      unitId,
+      parsed.orderType,
+      targetId,
+      {
+        targetName: parsed.targetName,
+        parameters: parsed.parameters,
+        priority: parsed.priority
+      }
+    );
+
+    if (result.success) {
+      return {
+        action: 'order',
+        ...result,
+        type: 'success'
+      };
+    } else {
+      return { message: result.error, type: 'error' };
+    }
+  }
+
+  /**
+   * Parse an order command string
+   */
+  parseOrderCommand(commandStr) {
+    // Format: "orderType targetName [parameters]"
+    // Examples: "move Sol", "patrol Alpha to Beta", "attack Enemy Fleet"
+
+    const words = commandStr.trim().toLowerCase().split(/\s+/);
+    if (words.length === 0) {
+      return { success: false, error: 'Empty command' };
+    }
+
+    const orderType = words[0];
+    const targetName = words.slice(1).join(' ');
+
     return {
-      message: `Order queued for ${unit}: "${command}"`,
-      type: 'success'
+      success: true,
+      orderType,
+      targetName: targetName || null,
+      parameters: {},
+      priority: 'NORMAL'
     };
+  }
+
+  /**
+   * Find unit by name
+   */
+  findUnitByName(name) {
+    const searchName = name.toLowerCase();
+
+    // Search commandable units
+    for (const [entityId, components] of this.entities.query('Commandable', 'Identity')) {
+      if (components.Identity.name.toLowerCase().includes(searchName)) {
+        return entityId;
+      }
+    }
+
+    // Search fleets
+    for (const [entityId, components] of this.entities.query('Fleet', 'Identity')) {
+      if (components.Identity.name.toLowerCase().includes(searchName)) {
+        return entityId;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Find target by name (star, planet, station, etc.)
+   */
+  findTargetByName(name) {
+    const searchName = name.toLowerCase();
+    const universe = this.engine.getSystem('universe');
+
+    // Search stars
+    for (const [id, components] of universe.getStars()) {
+      if (components.Identity.name.toLowerCase().includes(searchName)) {
+        return id;
+      }
+    }
+
+    // Search planets
+    for (const [id, components] of this.entities.query('Planet', 'Identity')) {
+      if (components.Identity.name.toLowerCase().includes(searchName)) {
+        return id;
+      }
+    }
+
+    // Search stations
+    for (const [id, components] of this.entities.query('Station', 'Identity')) {
+      if (components.Identity.name.toLowerCase().includes(searchName)) {
+        return id;
+      }
+    }
+
+    return null;
   }
 
   /**
    * Get pending orders
    */
-  async getOrders(unit, status, context) {
-    // Placeholder
-    return {
-      message: 'No orders pending.',
-      type: 'info'
+  async getOrders(unitName, status, context) {
+    const orderSystem = this.engine.getSystem('orders');
+
+    const filters = {
+      issuerId: this.playerEntityId
     };
+
+    if (unitName) {
+      const unitId = this.findUnitByName(unitName);
+      if (unitId) {
+        filters.recipientId = unitId;
+      }
+    }
+
+    if (status) {
+      filters.status = status;
+    }
+
+    const orders = orderSystem.getOrders(filters);
+
+    if (orders.length === 0) {
+      return { message: 'No orders pending.', type: 'info' };
+    }
+
+    let output = '═══════════════════════════════════════════════════════\n';
+    output += '                    PENDING ORDERS\n';
+    output += '═══════════════════════════════════════════════════════\n\n';
+
+    for (const order of orders) {
+      output += `[${order.id}] ${order.typeName}\n`;
+      output += `  Unit: ${order.recipientName}\n`;
+      output += `  Target: ${order.targetName || 'N/A'}\n`;
+      output += `  Status: ${order.status.toUpperCase()}\n`;
+      output += `  Issued: Tick ${order.issuedAt}\n`;
+      output += '\n';
+    }
+
+    return { render: output };
   }
 
   /**
    * Communication system
    */
   async comms(action, target, message, context) {
+    const messageSystem = this.engine.getSystem('messages');
+
     switch (action?.toLowerCase()) {
-      case 'read':
-        return { message: 'No new messages.', type: 'info' };
-      case 'send':
-        return { message: `Message sent to ${target}.`, type: 'success' };
+      case 'read': {
+        if (target) {
+          // Read specific message or from specific sender
+          const messages = messageSystem.getMessages(this.playerEntityId, {
+            from: this.findContactByName(target)
+          });
+
+          if (messages.messages.length === 0) {
+            return { message: `No messages from ${target}.`, type: 'info' };
+          }
+
+          // Read and display first message
+          const msg = messages.messages[0];
+          messageSystem.readMessage(this.playerEntityId, msg.id);
+
+          return {
+            render: this.formatMessage(msg),
+            type: 'info'
+          };
+        } else {
+          // List all messages
+          const messages = messageSystem.getMessages(this.playerEntityId, { limit: 10 });
+
+          if (messages.messages.length === 0) {
+            return { message: 'No messages.', type: 'info' };
+          }
+
+          let output = '═══════════════════════════════════════════════════════\n';
+          output += `                 MESSAGES (${messages.unreadCount} unread)\n`;
+          output += '═══════════════════════════════════════════════════════\n\n';
+
+          for (const msg of messages.messages) {
+            const unread = msg.read ? '  ' : '* ';
+            output += `${unread}[${msg.id}] From: ${msg.senderName}\n`;
+            output += `   Subject: ${msg.subject || '(no subject)'}\n`;
+            output += `   Received: Tick ${msg.receivedAt || msg.sentAt}\n\n`;
+          }
+
+          return { render: output };
+        }
+      }
+
+      case 'send': {
+        if (!target) {
+          return { message: 'Specify recipient: comms send <recipient> "message"', type: 'error' };
+        }
+        if (!message) {
+          return { message: 'Specify message content in quotes', type: 'error' };
+        }
+
+        const recipientId = this.findContactByName(target);
+        if (!recipientId) {
+          return { message: `Unknown recipient: "${target}"`, type: 'error' };
+        }
+
+        const result = messageSystem.sendMessage(this.playerEntityId, recipientId, message, {
+          subject: 'Personal Message'
+        });
+
+        return {
+          message: result.message,
+          type: result.success ? 'success' : 'error'
+        };
+      }
+
+      case 'broadcast': {
+        if (!message) {
+          return { message: 'Specify message: comms broadcast "message"', type: 'error' };
+        }
+
+        const result = messageSystem.broadcast(this.playerEntityId, message);
+
+        return {
+          message: result.message,
+          type: result.success ? 'success' : 'error'
+        };
+      }
+
       case 'list':
-        return { message: 'No contacts available.', type: 'info' };
       default:
-        return { message: 'Usage: comms <read|send|list> [target] [message]', type: 'info' };
+        return this.comms('read', null, null, context);
     }
   }
 
   /**
-   * Intelligence report
+   * Format a message for display
+   */
+  formatMessage(msg) {
+    let output = '═══════════════════════════════════════════════════════\n';
+    output += `FROM: ${msg.senderName}\n`;
+    output += `TO: ${msg.recipientName || 'You'}\n`;
+    output += `SUBJECT: ${msg.subject || '(no subject)'}\n`;
+    output += `DATE: Tick ${msg.receivedAt || msg.sentAt}\n`;
+    output += '───────────────────────────────────────────────────────\n\n';
+    output += msg.content + '\n';
+    output += '\n═══════════════════════════════════════════════════════\n';
+    return output;
+  }
+
+  /**
+   * Find contact by name
+   */
+  findContactByName(name) {
+    const searchName = name.toLowerCase();
+
+    // Search NPCs
+    for (const [entityId, components] of this.entities.query('Character', 'Identity')) {
+      if (components.Identity.name.toLowerCase().includes(searchName)) {
+        return entityId;
+      }
+    }
+
+    // Search faction leaders
+    const factionSystem = this.engine.getSystem('factions');
+    for (const faction of factionSystem.getFactions()) {
+      if (faction.name.toLowerCase().includes(searchName)) {
+        return faction.id;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Request intelligence report on a target
    */
   async intel(target, detailed, context) {
-    return this.view(target, detailed, context);
+    const intelSystem = this.engine.getSystem('intel');
+
+    // Find target
+    const targetId = this.findTargetByName(target);
+    if (!targetId) {
+      // Check for faction
+      const factionSystem = this.engine.getSystem('factions');
+      for (const faction of factionSystem.getFactions()) {
+        if (faction.name.toLowerCase().includes(target.toLowerCase())) {
+          return this.displayFactionIntel(faction.id, detailed);
+        }
+      }
+
+      return { message: `Unknown target: "${target}"`, type: 'error' };
+    }
+
+    // Generate or retrieve intel report
+    const existingIntel = intelSystem.getLatestIntel(this.playerEntityId, targetId);
+
+    let report;
+    if (existingIntel && (this.engine.state.tick - existingIntel.gatheredAt) < 50) {
+      // Use existing recent intel
+      report = existingIntel;
+    } else {
+      // Generate new report
+      const result = intelSystem.generateReport(targetId, this.playerEntityId);
+      if (!result.success) {
+        return { message: result.error, type: 'error' };
+      }
+      report = result.report;
+    }
+
+    return {
+      render: this.formatIntelReport(report, detailed),
+      type: 'info'
+    };
+  }
+
+  /**
+   * Format an intel report for display
+   */
+  formatIntelReport(report, detailed) {
+    let output = '═══════════════════════════════════════════════════════\n';
+    output += '                 INTELLIGENCE REPORT\n';
+    output += '═══════════════════════════════════════════════════════\n\n';
+
+    output += `Target: ${report.targetName}\n`;
+    output += `Type: ${report.targetType.toUpperCase()}\n`;
+    output += `Classification: ${report.classification.toUpperCase()}\n`;
+    output += `Accuracy: ${Math.round(report.accuracy * 100)}%\n`;
+    output += `Gathered: Tick ${report.gatheredAt}\n`;
+    output += '\n───────────────────────────────────────────────────────\n\n';
+
+    const data = report.data;
+
+    for (const [key, value] of Object.entries(data)) {
+      if (!detailed && ['composition', 'marketPrices'].includes(key)) continue;
+
+      if (typeof value === 'object' && value !== null) {
+        output += `${this.formatKey(key)}:\n`;
+        for (const [subKey, subValue] of Object.entries(value)) {
+          output += `  ${this.formatKey(subKey)}: ${this.formatValue(subValue)}\n`;
+        }
+      } else {
+        output += `${this.formatKey(key)}: ${this.formatValue(value)}\n`;
+      }
+    }
+
+    output += '\n═══════════════════════════════════════════════════════\n';
+    return output;
+  }
+
+  /**
+   * Format key for display
+   */
+  formatKey(key) {
+    return key
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/^./, str => str.toUpperCase())
+      .trim();
+  }
+
+  /**
+   * Format value for display
+   */
+  formatValue(value) {
+    if (typeof value === 'number') {
+      return value.toLocaleString();
+    }
+    if (Array.isArray(value)) {
+      return value.join(', ');
+    }
+    return String(value);
+  }
+
+  /**
+   * Display intel on a faction
+   */
+  async displayFactionIntel(factionId, detailed) {
+    const intelSystem = this.engine.getSystem('intel');
+
+    const result = intelSystem.generateReport(factionId, this.playerEntityId);
+    if (!result.success) {
+      return { message: result.error, type: 'error' };
+    }
+
+    return {
+      render: this.formatIntelReport(result.report, detailed),
+      type: 'info'
+    };
   }
 
   /**
