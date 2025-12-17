@@ -130,6 +130,93 @@ export const Components = {
     systemId,    // Current star system
     bodyId,      // Planet/moon if landed
     stationId    // Station if docked
+  }),
+
+  /**
+   * Order component - represents a command issued to a unit
+   */
+  Order: (data = {}) => ({
+    id: data.id || `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    type: data.type || 'STANDBY',
+    issuerId: data.issuerId || null,       // Who issued the order (player or AI)
+    recipientId: data.recipientId || null, // Unit receiving the order
+    targetId: data.targetId || null,       // Target of the order (location, enemy, etc.)
+    targetName: data.targetName || null,   // Human-readable target name
+    priority: data.priority || 'NORMAL',
+    status: data.status || 'pending',
+    parameters: data.parameters || {},     // Additional order-specific params
+    issuedAt: data.issuedAt || 0,          // Game tick when issued
+    transmitTime: data.transmitTime || 0,  // Ticks until order reaches recipient
+    executionTime: data.executionTime || 0, // Ticks to execute
+    completedAt: data.completedAt || null,
+    result: data.result || null,
+    resultDetails: data.resultDetails || null
+  }),
+
+  /**
+   * OrderQueue component - unit's pending orders
+   */
+  OrderQueue: (data = {}) => ({
+    orders: data.orders || [],             // Array of order IDs
+    currentOrder: data.currentOrder || null,
+    maxQueueSize: data.maxQueueSize || 5,
+    autoExecute: data.autoExecute ?? true
+  }),
+
+  /**
+   * Message component - communication between entities
+   */
+  Message: (data = {}) => ({
+    id: data.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    senderId: data.senderId || null,
+    senderName: data.senderName || 'Unknown',
+    recipientId: data.recipientId || null,
+    recipientName: data.recipientName || null,
+    subject: data.subject || '',
+    content: data.content || '',
+    type: data.type || 'personal',         // personal, broadcast, faction, system
+    priority: data.priority || 'normal',
+    sentAt: data.sentAt || 0,
+    receivedAt: data.receivedAt || null,
+    read: data.read || false,
+    encrypted: data.encrypted || false,
+    attachments: data.attachments || []
+  }),
+
+  /**
+   * Inbox component - entity's message storage
+   */
+  Inbox: (data = {}) => ({
+    messages: data.messages || [],         // Array of message IDs
+    unreadCount: data.unreadCount || 0,
+    maxMessages: data.maxMessages || 50
+  }),
+
+  /**
+   * IntelReport component - intelligence data about a target
+   */
+  IntelReport: (data = {}) => ({
+    id: data.id || `intel_${Date.now()}`,
+    targetId: data.targetId || null,
+    targetType: data.targetType || null,   // star, faction, fleet, etc.
+    targetName: data.targetName || null,
+    gatheredAt: data.gatheredAt || 0,
+    accuracy: data.accuracy || 1.0,        // 0-1, degrades over time
+    data: data.data || {},                 // The actual intel data
+    source: data.source || 'unknown',
+    classification: data.classification || 'unclassified'
+  }),
+
+  /**
+   * Commandable component - marks entity as able to receive orders
+   */
+  Commandable: (data = {}) => ({
+    commanderId: data.commanderId || null, // Who can issue orders
+    competence: data.competence || 0.8,    // 0-1, affects order execution
+    loyalty: data.loyalty || 1.0,          // 0-1, chance of following orders
+    initiative: data.initiative || 0.5,    // 0-1, takes independent action
+    commsRange: data.commsRange || 50,     // Max distance for comms
+    lastContactTick: data.lastContactTick || 0
   })
 };
 
