@@ -44,6 +44,130 @@ export const Validators = {
   }
 };
 
+/**
+ * Natural Language Processing utilities for command parsing
+ */
+export const NLPUtils = {
+  /**
+   * Calculate Levenshtein distance between two strings
+   */
+  levenshtein(a, b) {
+    const matrix = [];
+
+    for (let i = 0; i <= b.length; i++) {
+      matrix[i] = [i];
+    }
+    for (let j = 0; j <= a.length; j++) {
+      matrix[0][j] = j;
+    }
+
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        if (b.charAt(i - 1) === a.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1,
+            matrix[i][j - 1] + 1,
+            matrix[i - 1][j] + 1
+          );
+        }
+      }
+    }
+
+    return matrix[b.length][a.length];
+  },
+
+  /**
+   * Calculate similarity ratio (0-1)
+   */
+  similarity(a, b) {
+    const maxLen = Math.max(a.length, b.length);
+    if (maxLen === 0) return 1.0;
+    const distance = this.levenshtein(a.toLowerCase(), b.toLowerCase());
+    return 1 - (distance / maxLen);
+  },
+
+  /**
+   * Find best match from a list of candidates
+   */
+  findBestMatch(input, candidates, threshold = 0.6) {
+    let bestMatch = null;
+    let bestScore = threshold;
+
+    for (const candidate of candidates) {
+      const score = this.similarity(input, candidate);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = candidate;
+      }
+    }
+
+    return bestMatch ? { match: bestMatch, score: bestScore } : null;
+  },
+
+  /**
+   * Extract intent from natural language
+   */
+  extractIntent(input) {
+    const normalized = input.toLowerCase().trim();
+
+    // Movement intents
+    if (/^(go|travel|head|fly|jump|move)\s+(to\s+)?/i.test(normalized)) {
+      return { intent: 'move', confidence: 0.9 };
+    }
+
+    // Attack intents
+    if (/^(attack|engage|destroy|strike|fight|assault)/i.test(normalized)) {
+      return { intent: 'attack', confidence: 0.9 };
+    }
+
+    // Defense intents
+    if (/^(defend|protect|guard|secure)/i.test(normalized)) {
+      return { intent: 'defend', confidence: 0.9 };
+    }
+
+    // Recon intents
+    if (/^(scout|recon|scan|survey|investigate|explore)/i.test(normalized)) {
+      return { intent: 'scout', confidence: 0.9 };
+    }
+
+    // Trade intents
+    if (/^(trade|buy|sell|commerce)/i.test(normalized)) {
+      return { intent: 'trade', confidence: 0.9 };
+    }
+
+    return { intent: null, confidence: 0 };
+  },
+
+  /**
+   * Extract target from natural language
+   */
+  extractTarget(input, afterWord) {
+    const normalized = input.toLowerCase();
+
+    // Remove intent words
+    let remaining = normalized
+      .replace(/^(go|travel|head|fly|jump|move|attack|engage|destroy|defend|protect|scout|recon|scan)\s+/i, '')
+      .replace(/^(to|at|towards?|from)\s+/i, '')
+      .trim();
+
+    // Handle "the X" pattern
+    remaining = remaining.replace(/^the\s+/i, '');
+
+    return remaining || null;
+  },
+
+  /**
+   * Parse quoted strings from input
+   */
+  extractQuoted(input) {
+    const matches = input.match(/"([^"]+)"|'([^']+)'/g);
+    if (!matches) return [];
+    return matches.map(m => m.replace(/["']/g, ''));
+  }
+};
+
 export class CommandParser {
   constructor() {
     this.commands = new Map();
@@ -91,7 +215,7 @@ export class CommandParser {
    */
   async execute(input, context = {}) {
     const trimmed = input.trim();
-    
+
     if (!trimmed) {
       return { success: false, error: 'Empty command' };
     }
@@ -101,10 +225,10 @@ export class CommandParser {
 
     // Parse the command
     const parsed = this.parse(trimmed);
-    
+
     if (!parsed) {
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: `Unknown command: "${trimmed.split(' ')[0]}"`,
         suggestions: this.getSuggestions(trimmed.split(' ')[0])
       };
@@ -145,6 +269,97 @@ export class CommandParser {
         command: parsed.command.name
       };
     }
+  }
+
+  /**
+   * Parse command with natural language support
+   */
+  parseNatural(input, context = {}) {
+    const tokens = this.tokenize(input);
+    if (tokens.length === 0) return null;
+
+    // First try exact match
+    const exact = this.parse(input);
+    if (exact) return exact;
+
+    // Try fuzzy command matching
+    const cmdName = tokens[0].toLowerCase();
+    const allCommands = Array.from(this.commands.keys());
+    const allAliases = Array.from(this.aliases.keys());
+
+    const fuzzyMatch = NLPUtils.findBestMatch(cmdName, [...allCommands, ...allAliases], 0.6);
+
+    if (fuzzyMatch) {
+      const correctedCmd = this.aliases.get(fuzzyMatch.match) || fuzzyMatch.match;
+      const correctedInput = [correctedCmd, ...tokens.slice(1)].join(' ');
+      const parsed = this.parse(correctedInput);
+
+      if (parsed) {
+        parsed.fuzzyMatched = true;
+        parsed.originalInput = input;
+        parsed.correctedTo = correctedCmd;
+        parsed.confidence = fuzzyMatch.score;
+        return parsed;
+      }
+    }
+
+    // Try intent extraction
+    const intent = NLPUtils.extractIntent(input);
+    if (intent.confidence > 0.8) {
+      const target = NLPUtils.extractTarget(input);
+
+      return {
+        command: null,
+        naturalLanguage: true,
+        intent: intent.intent,
+        target,
+        confidence: intent.confidence,
+        raw: input
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Execute with natural language support
+   */
+  async executeNatural(input, context = {}) {
+    const parsed = this.parseNatural(input, context);
+
+    if (!parsed) {
+      return {
+        success: false,
+        error: `Unknown command: "${input.split(' ')[0]}"`,
+        suggestions: this.getSuggestions(input.split(' ')[0])
+      };
+    }
+
+    // Handle fuzzy matched commands
+    if (parsed.fuzzyMatched && parsed.command) {
+      // Execute the corrected command
+      const tokens = this.tokenize(parsed.originalInput);
+      const correctedInput = [parsed.correctedTo, ...tokens.slice(1)].join(' ');
+
+      const result = await this.execute(correctedInput, context);
+
+      result.didYouMean = `Interpreted as: "${parsed.correctedTo}"`;
+      return result;
+    }
+
+    // Handle natural language intents
+    if (parsed.naturalLanguage) {
+      return {
+        success: false,
+        naturalLanguage: true,
+        intent: parsed.intent,
+        target: parsed.target,
+        suggestion: `Try: order <unit> "${parsed.intent} ${parsed.target || ''}"`.trim()
+      };
+    }
+
+    // Standard execution
+    return this.execute(input, context);
   }
 
   /**
