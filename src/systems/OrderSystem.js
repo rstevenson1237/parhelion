@@ -372,31 +372,51 @@ export class OrderSystem {
    * Execute movement order
    */
   executeMoveOrder(order, modifier) {
-    // Move unit to target location
     if (!order.targetId) {
       return { success: false, error: 'No destination specified' };
     }
 
-    // Update unit's location
-    const position = this.entities.getComponent(order.recipientId, 'Position');
+    // Get target position
     const targetPos = this.entities.getComponent(order.targetId, 'Position');
-
-    if (position && targetPos) {
-      position.x = targetPos.x;
-      position.y = targetPos.y;
-      position.z = targetPos.z || 0;
+    if (!targetPos) {
+      return { success: false, error: 'Destination has no known position' };
     }
 
-    // Update PlayerLocation if applicable
+    // Check if recipient has Position component
+    const currentPos = this.entities.getComponent(order.recipientId, 'Position');
+    if (currentPos) {
+      // For units with Position, set up movement
+      this.entities.addComponent(order.recipientId, 'MoveTo', Components.MoveTo({
+        targetId: order.targetId,
+        targetX: targetPos.x,
+        targetY: targetPos.y,
+        targetZ: targetPos.z || 0,
+        startedAt: this.engine.state.tick
+      }));
+
+      // Update fleet status
+      const fleet = this.entities.getComponent(order.recipientId, 'Fleet');
+      if (fleet) {
+        fleet.status = 'moving';
+      }
+
+      return {
+        success: true,
+        message: `En route to ${order.targetName || order.targetId}`
+      };
+    }
+
+    // Fallback: instant movement (for player, non-fleet units)
     const playerLoc = this.entities.getComponent(order.recipientId, 'PlayerLocation');
     if (playerLoc) {
       playerLoc.systemId = order.targetId;
+      return {
+        success: true,
+        message: `Arrived at ${order.targetName || order.targetId}`
+      };
     }
 
-    return {
-      success: true,
-      message: `Arrived at ${order.targetName || order.targetId}`
-    };
+    return { success: false, error: 'Unit cannot move' };
   }
 
   /**

@@ -133,6 +133,17 @@ export const Components = {
   }),
 
   /**
+   * MoveTo component - entity moving to destination
+   */
+  MoveTo: (data = {}) => ({
+    targetId: data.targetId || null,
+    targetX: data.targetX || 0,
+    targetY: data.targetY || 0,
+    targetZ: data.targetZ || 0,
+    startedAt: data.startedAt || 0
+  }),
+
+  /**
    * Order component - represents a command issued to a unit
    */
   Order: (data = {}) => ({
