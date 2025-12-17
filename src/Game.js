@@ -254,6 +254,40 @@ export class Game {
       }
     }
 
+    // Assign player to a faction and give command of a fleet
+    const factions = factionSystem.getFactions();
+    if (factions.length > 0) {
+      // Pick a random faction for the player
+      const playerFaction = factions[Math.floor(this.rng.next() * factions.length)];
+      this.player.faction = playerFaction.name;
+      this.player.factionId = playerFaction.id;
+
+      // Add faction membership component to player
+      this.entities.addComponent(this.playerEntityId, 'FactionMember', {
+        factionId: playerFaction.id,
+        role: 'military',
+        joinedAt: this.engine.state.tick
+      });
+
+      // Give player command authority over one faction fleet
+      const factionFleets = fleetSystem.getFleets({ factionId: playerFaction.id });
+
+      if (factionFleets.length > 0) {
+        const assignedFleet = factionFleets[0];
+        const commandable = this.entities.getComponent(assignedFleet.id, 'Commandable');
+        if (commandable) {
+          commandable.commanderId = this.playerEntityId;
+
+          // Emit event
+          this.events.emit('player:fleet_assigned', {
+            playerId: this.playerEntityId,
+            fleetId: assignedFleet.id,
+            fleetName: assignedFleet.name
+          });
+        }
+      }
+    }
+
     // Spawn player at first star system
     const firstStar = stars[0];
     if (firstStar) {
