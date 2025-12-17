@@ -751,6 +751,124 @@ export function registerStandardCommands(parser, game) {
     }
   });
 
+  parser.register('cancel', {
+    description: 'Cancel a pending order',
+    usage: 'cancel <order-id>',
+    category: 'orders',
+    args: [
+      { name: 'orderId', required: true, description: 'Order ID to cancel' }
+    ],
+    handler: async (args, ctx) => {
+      const orderSystem = game.engine.getSystem('orders');
+
+      const result = orderSystem.cancelOrder(args.orderId, game.playerEntityId);
+
+      return {
+        message: result.message || result.error,
+        type: result.success ? 'success' : 'error'
+      };
+    }
+  });
+
+  // Fleet commands
+  parser.register('fleets', {
+    description: 'List all known fleets',
+    usage: 'fleets [--faction <name>] [--mine]',
+    aliases: ['fleet'],
+    category: 'military',
+    handler: async (args, ctx) => {
+      const fleetSystem = game.engine.getSystem('fleets');
+      const factionSystem = game.engine.getSystem('factions');
+
+      const filters = {};
+
+      if (args.mine) {
+        // Filter to player-controlled fleets
+        filters.commanderId = game.playerEntityId;
+      } else if (args.faction) {
+        // Find faction by name
+        for (const faction of factionSystem.getFactions()) {
+          if (faction.name.toLowerCase().includes(args.faction.toLowerCase())) {
+            filters.factionId = faction.id;
+            break;
+          }
+        }
+      }
+
+      const fleets = fleetSystem.getFleets(filters);
+
+      if (fleets.length === 0) {
+        return { message: 'No fleets found matching criteria.', type: 'info' };
+      }
+
+      let output = '═══════════════════════════════════════════════════════\n';
+      output += '                    KNOWN FLEETS\n';
+      output += '═══════════════════════════════════════════════════════\n\n';
+
+      for (const fleet of fleets) {
+        const universe = game.engine.getSystem('universe');
+        const starName = fleet.locationId
+          ? universe.getStar(fleet.locationId)?.Identity?.name || 'Unknown'
+          : 'In Transit';
+
+        output += `${fleet.name}\n`;
+        output += `  Ships: ${fleet.shipCount} | Combat Power: ${fleet.combatPower}\n`;
+        output += `  Location: ${starName}\n`;
+        output += `  Status: ${fleet.status.toUpperCase()}\n`;
+        output += '\n';
+      }
+
+      return { render: output };
+    }
+  });
+
+  parser.register('units', {
+    description: 'List all units under your command',
+    usage: 'units',
+    category: 'military',
+    handler: async (args, ctx) => {
+      const units = [];
+
+      // Find all commandable units where player is commander
+      for (const [entityId] of game.entities.withComponent('Commandable')) {
+        const commandable = game.entities.getComponent(entityId, 'Commandable');
+        const identity = game.entities.getComponent(entityId, 'Identity');
+
+        if (!commandable || !identity) continue;
+
+        if (commandable.commanderId === game.playerEntityId) {
+          units.push({
+            id: entityId,
+            name: identity.name,
+            competence: commandable.competence,
+            loyalty: commandable.loyalty
+          });
+        }
+      }
+
+      if (units.length === 0) {
+        return { message: 'You have no units under your command.', type: 'info' };
+      }
+
+      let output = '═══════════════════════════════════════════════════════\n';
+      output += '                  UNITS UNDER COMMAND\n';
+      output += '═══════════════════════════════════════════════════════\n\n';
+
+      for (const unit of units) {
+        const queue = game.entities.getComponent(unit.id, 'OrderQueue');
+        const pendingOrders = queue?.orders?.length || 0;
+
+        output += `${unit.name}\n`;
+        output += `  Competence: ${Math.round(unit.competence * 100)}%\n`;
+        output += `  Loyalty: ${Math.round(unit.loyalty * 100)}%\n`;
+        output += `  Pending Orders: ${pendingOrders}\n`;
+        output += '\n';
+      }
+
+      return { render: output };
+    }
+  });
+
   // Communication commands
   parser.register('comms', {
     description: 'Communication system',
