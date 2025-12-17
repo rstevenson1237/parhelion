@@ -62,11 +62,15 @@ military command systems.
 - [ ] Social connections (NPCs, other players)
 - [ ] Reputation with factions
 
-#### 1D: Command System
-- [ ] Natural language command parser
-- [ ] Order queue system (delayed execution)
-- [ ] Communication protocols (messages, broadcasts)
-- [ ] Intelligence/reconnaissance commands
+#### 1D: Command System ✓ COMPLETE
+- [x] Natural language command parser
+- [x] Order queue system (delayed execution)
+- [x] Communication protocols (messages, broadcasts)
+- [x] Intelligence/reconnaissance commands
+- [x] Fleet system with command hierarchy
+- [x] Player faction assignment and fleet command
+- [x] Movement component for gradual fleet movement
+- [x] Comprehensive integration test suite
 
 **Deliverable**: Single player can create character, explore universe, give orders to faction units, watch events unfold.
 
