@@ -17,6 +17,7 @@ import { CharacterSystem } from './systems/CharacterSystem.js';
 import { OrderSystem } from './systems/OrderSystem.js';
 import { MessageSystem } from './systems/MessageSystem.js';
 import { IntelSystem } from './systems/IntelSystem.js';
+import { FleetSystem } from './systems/FleetSystem.js';
 import { Random } from './utils/Random.js';
 import fs from 'fs';
 import path from 'path';
@@ -103,6 +104,12 @@ export class Game {
     characterSystem.entities = this.entities;
     characterSystem.setRNG(this.rng.next.bind(this.rng));
     this.engine.registerSystem('characters', characterSystem, 50);
+
+    // Initialize fleet system (priority 45)
+    const fleetSystem = new FleetSystem();
+    fleetSystem.entities = this.entities;
+    fleetSystem.setRNG(this.rng.next.bind(this.rng));
+    this.engine.registerSystem('fleets', fleetSystem, 45);
 
     // Initialize order system (priority 55)
     const orderSystem = new OrderSystem();
@@ -227,6 +234,25 @@ export class Game {
     // Initialize economy
     const economySystem = this.engine.getSystem('economy');
     economySystem.initializeMarkets();
+
+    // Create starting fleets for each faction
+    const fleetSystem = this.engine.getSystem('fleets');
+    for (const faction of factionSystem.getFactions()) {
+      const controlledSystems = faction.territory;
+      if (controlledSystems.length > 0) {
+        // Create 1-3 fleets per faction
+        const fleetCount = 1 + Math.floor(this.rng.next() * 3);
+        for (let i = 0; i < fleetCount; i++) {
+          const locationId = controlledSystems[Math.floor(this.rng.next() * controlledSystems.length)];
+          fleetSystem.createFleet({
+            factionId: faction.id,
+            locationId,
+            shipCount: 3 + Math.floor(this.rng.next() * 10),
+            competence: 0.5 + this.rng.next() * 0.4
+          });
+        }
+      }
+    }
 
     // Spawn player at first star system
     const firstStar = stars[0];
