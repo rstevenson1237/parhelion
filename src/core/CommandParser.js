@@ -610,7 +610,11 @@ export function registerStandardCommands(parser, game) {
     ],
     handler: async (args, ctx) => {
       try {
-        const target = Validators.required(args.target, 'target');
+        // Support multi-word star names by joining all positional args
+        const target = args._raw && args._raw.length > 0
+          ? args._raw.filter(t => !t.startsWith('--')).join(' ')
+          : args.target;
+        Validators.required(target, 'target');
         Validators.string(target, 'target', { minLength: 1, maxLength: 100 });
         return game.view(target, args.detail, ctx);
       } catch (error) {
@@ -632,7 +636,11 @@ export function registerStandardCommands(parser, game) {
     ],
     handler: async (args, ctx) => {
       try {
-        const destination = Validators.required(args.destination, 'destination');
+        // Support multi-word destinations by joining all positional args
+        const destination = args._raw && args._raw.length > 0
+          ? args._raw.filter(t => !t.startsWith('--')).join(' ')
+          : args.destination;
+        Validators.required(destination, 'destination');
         Validators.string(destination, 'destination', { minLength: 1, maxLength: 100 });
         return game.goto(destination, ctx);
       } catch (error) {
@@ -895,7 +903,11 @@ export function registerStandardCommands(parser, game) {
       { name: 'target', required: true }
     ],
     handler: async (args, ctx) => {
-      return game.intel(args.target, args.detailed, ctx);
+      // Support multi-word targets by joining all positional args
+      const target = args._raw && args._raw.length > 0
+        ? args._raw.filter(t => !t.startsWith('--')).join(' ')
+        : args.target;
+      return game.intel(target, args.detailed, ctx);
     }
   });
 
@@ -995,7 +1007,11 @@ export function registerStandardCommands(parser, game) {
     ],
     handler: async (args, ctx) => {
       try {
-        const name = Validators.required(args.name, 'name');
+        // Support multi-word faction names by joining all positional args
+        const name = args._raw && args._raw.length > 0
+          ? args._raw.filter(t => !t.startsWith('--')).join(' ')
+          : args.name;
+        Validators.required(name, 'name');
         const factionSystem = game.engine.getSystem('factions');
         return factionSystem.getFactionDetails(name);
       } catch (error) {
@@ -1233,7 +1249,11 @@ export function registerStandardCommands(parser, game) {
       { name: 'target', required: true, description: 'Entity to inspect' }
     ],
     handler: async (args, ctx) => {
-      const target = args.target.toLowerCase();
+      // Support multi-word targets by joining all positional args
+      const targetRaw = args._raw && args._raw.length > 0
+        ? args._raw.filter(t => !t.startsWith('--')).join(' ')
+        : args.target;
+      const target = targetRaw.toLowerCase();
       const universe = game.engine.getSystem('universe');
       const factions = game.engine.getSystem('factions');
 
@@ -1270,7 +1290,7 @@ export function registerStandardCommands(parser, game) {
         }
       }
 
-      return { message: `Unknown target: "${args.target}"`, type: 'error' };
+      return { message: `Unknown target: "${targetRaw}"`, type: 'error' };
     }
   });
 
